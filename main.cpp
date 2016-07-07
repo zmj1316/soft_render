@@ -73,12 +73,34 @@ void WT(Reactangular &r0)
     }
 }
 
+// 视角变换
+void VT(Reactangular& r, Transform t)
+{
+    for (size_t i = 0; i < 4; i++)
+    {
+        float* vec = r.vertexs[i].vec;
+        float new_vec[4];
+        for (size_t i = 0; i < 4; i++)
+        {
+            new_vec[i] = t.right.vec[i] * vec[0]
+                + t.up.vec[i] * vec[1]
+                + t.forward.vec[i] * vec[2]
+                + t.position.vec[i] * vec[3];
+        }
+        new_vec[0] /= tan(3.14 / 6);
+        new_vec[1] /= tan(3.14 / 6);
+        new_vec[2] *= 0.9;
+        new_vec[2] -= 10;
+        memcpy(vec, new_vec, 4 * sizeof(float));
+    }
+}
+
 void get_Pt(POINT* Pt, Reactangular& r0)
 {
     for (size_t i = 0; i < 4; i++)
     {
         Pt[i].x = 10 * r0.vertexs[i].vec[0] * 50 / r0.vertexs[i].vec[2];
-        Pt[i].y = 10 * r0.vertexs[i].vec[1] * 50 / r0.vertexs[i].vec[2];
+        Pt[i].y = 800 - 10 * r0.vertexs[i].vec[1] * 50 / r0.vertexs[i].vec[2];
         //Pt[i].x = r0.vertexs[i].vec[0] * (50 / r0.vertexs[i].vec[2]);
         //Pt[i].y = r0.vertexs[i].vec[1] * (50 / r0.vertexs[i].vec[2]);
     }
@@ -86,32 +108,11 @@ void get_Pt(POINT* Pt, Reactangular& r0)
 
 void init(HWND hWnd, HINSTANCE hInstance)
 {
-//	CreateWindow(TEXT("BUTTON"), TEXT("画点"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 150, 80, hWnd, NULL, hInstance, NULL);
-//	CreateWindow(TEXT("BUTTON"), TEXT("矩形"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 90, 150, 80, hWnd, NULL, hInstance, NULL);
-//	CreateWindow(TEXT("BUTTON"), TEXT("填充矩形"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 180, 150, 80, hWnd, NULL, hInstance, NULL);
-//	CreateWindow(TEXT("BUTTON"), TEXT("线框矩形"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 270, 150, 80, hWnd, NULL, hInstance, NULL);
-//	CreateWindow(TEXT("BUTTON"), TEXT("三角形"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 360, 150, 80, hWnd, NULL, hInstance, NULL);
-//	CreateWindow(TEXT("BUTTON"), TEXT("椭圆"), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 450, 150, 80, hWnd, NULL, hInstance, NULL);
-    
-//    Cube cube;
-//    float Tx = -30;
-//    float Ty = -30;
-//    float Tz = 50;
     HDC hDC = GetDC(hWnd);
 
-
-    //Reactangular r0;
-    //// 第一个面
-    //r0.transform.position = Vector4(18, 10, 2, 1);
-    ////r0.transform.forward = Vector4(0, -1, 1, 0);
-    ////r0.transform.up = Vector4(0, 1, 1, 0);
-    ////r0.transform.right = Vector4(1, 0, 0, 0);
-
-
-    //r0.vertexs[0] = Vector4(0, 0, 0, 1);
-    //r0.vertexs[1] = Vector4(10, 0, 0, 1);
-    //r0.vertexs[2] = Vector4(10, 10, 0, 1);
-    //r0.vertexs[3] = Vector4(0, 10, 0, 1);
+    int count = 0;
+_LOOP:
+    count++;
 
     Reactangular reacs[6];
     reacs[0].transform.forward = Vector4(0, 0, -1, 0);
@@ -144,65 +145,47 @@ void init(HWND hWnd, HINSTANCE hInstance)
     reacs[5].transform.up = Vector4(0, 1, 0, 0);
     reacs[5].transform.right = Vector4(1, 0, 0, 0);
 
-    /*
-    // 第二个面
-    Reactangular r1 = r0;
-    r1.transform.position = Vector4(28, 10, 2, 1);
-    r1.transform.forward = Vector4(0, 1, 0, 0);
-    r1.transform.up = Vector4(0, 0, 1, 0);
-    r1.transform.right = Vector4(-1, 0, 0, 0);
-
-    Reactangular r2 = r0;
-    r2.transform.position = Vector4(18, 10, 2, 1);
-    r2.transform.forward = Vector4(-1,0,0, 0);
-    r2.transform.up = Vector4(0, 1, 0, 0);
-    r2.transform.right = Vector4(0, 0, 1, 0);
-
-    Reactangular r3 = r0;
-    r3.transform.position = Vector4(28, 10, 2, 1);
-    r3.transform.forward = Vector4(1, 0, 0, 0);
-    r3.transform.up = Vector4(0, 1, 0, 0);
-    r3.transform.right = Vector4(0, 0, 1, 0);
-    */
-
-    //// 平移
-    //for (size_t i = 0; i < 4; i++)
-    //{
-    //    for (size_t j = 0; j < 3; j++)
-    //    {
-    //        r0.vertexs[i].vec[j] += r0.transform.position.vec[j];
-    //    }
-    //}
 
     // 世界变换
     POINT Pt[4 * 6];
+    Transform camera;
+    camera.position = Vector4(10, 10, 60, 1);
+    camera.forward = Vector4(0, -1 * cos(3.14*count / 100), -1 * sin(3.14*count / 100), 0);
+    camera.up = Vector4(0, 1 * sin(3.14*count / 100), -1 * cos(3.14*count / 100), 0);
+    camera.right = Vector4(-1, 0, 0, 0);
 
+    HBRUSH burushed[6];
+
+    for (int i = 0; i < 6; ++i)
+    {
+        burushed[i] = CreateSolidBrush(RGB(255*((i&4)>>2), 255*((i&2)>>1), 255*(i&1)));
+    }
     for (size_t i = 0; i < 6; i++)
     {
         WT(reacs[i]);
+        VT(reacs[i], camera);
         get_Pt(Pt + 4 * i, reacs[i]);
 
         float r = 0;
         float * vec = reacs[i].transform.forward.vec;
-        r = vec[0] + vec[1] - vec[2];
-        if (r>0)
+        r = vec[0] * camera.position.vec[0] - vec[1] * camera.position.vec[1] + vec[2] * camera.position.vec[2];
+
+        if (1)
+        {
+            SelectObject(hDC, burushed[i]);
             Polygon(hDC, Pt + 4 * i, 4);
-        Sleep(100);
+        }
     }
 
-    // 投影
-    //POINT Pt[4];
-    //POINT Pt1[4];
-    //POINT Pt2[4];
-    //POINT Pt3[4];
-    //get_Pt(Pt, r0);
-    //get_Pt(Pt1, r1);
-    //get_Pt(Pt2, r2);
-    //get_Pt(Pt3, r3);
+
 
     
     
-    Sleep(1000);
+    Sleep(50);
+    if (count > 80)
+        exit(0);
+    goto _LOOP;
+
     exit(0);
 }
 
