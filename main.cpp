@@ -1,9 +1,13 @@
 #include <windows.h>
 #include   <string>   
+#include <vector>
+#include <algorithm>
+
 using   namespace   std;
 
 #include "Cube.h"
 #include "matrix.h"
+#include "Zbuffer.h"
 #include <math.h>
 //----------函数声明---------------
 void init(HWND hWnd, HINSTANCE hInstance);
@@ -69,7 +73,7 @@ void WT(Reactangular &r0)
                 + r0.transform.forward.vec[i] * vec[2]
                 + r0.transform.position.vec[i] * vec[3];
         }
-        memcpy(vec, new_vec, 4 * sizeof(float));
+        memcpy(r0.vertexs_world[i].vec, new_vec, 4 * sizeof(float));
     }
 }
 
@@ -78,20 +82,44 @@ void VT(Reactangular& r, Transform t)
 {
     for (size_t i = 0; i < 4; i++)
     {
-        float* vec = r.vertexs[i].vec;
+        float* vec = r.vertexs_world[i].vec;
         float new_vec[4];
+
+        matrix<float> m(4, 4);
+        for (size_t i = 0; i < 4; i++)
+        {
+            m.setvalue(i, 0, t.right.vec[i]);
+            m.setvalue(i, 1, t.up.vec[i]);
+            m.setvalue(i, 2, t.forward.vec[i]);
+            m.setvalue(i, 3, t.position.vec[i]);
+        }
+        m.invert();
+
         for (size_t i = 0; i < 4; i++)
         {
             new_vec[i] = t.right.vec[i] * vec[0]
                 + t.up.vec[i] * vec[1]
                 + t.forward.vec[i] * vec[2]
                 + t.position.vec[i] * vec[3];
+            //float right, up, forward, position;
+            //bool res;
+            //m.getvalue(i, 0, right, res);
+            //m.getvalue(i, 1, up, res);
+            //m.getvalue(i, 2, forward, res);
+            //m.getvalue(i, 3, position, res);
+            //new_vec[i] = right*vec[0]
+            //    + up*vec[1]
+            //    + forward*vec[2]
+            //    + position*vec[3];
         }
         new_vec[0] /= tan(3.14 / 6);
         new_vec[1] /= tan(3.14 / 6);
         new_vec[2] *= 0.9;
-        new_vec[2] -= 10;
-        memcpy(vec, new_vec, 4 * sizeof(float));
+        new_vec[2] -= 0;
+        memcpy(r.vertexs_view[i].vec, new_vec, 4 * sizeof(float));
+        Vector4 t0 = r.vertexs_view[1] - r.vertexs_view[0];
+        Vector4 t1 = r.vertexs_view[2] - r.vertexs_view[0];
+        r.transform.forward = t0 / t1;
     }
 }
 
@@ -99,8 +127,8 @@ void get_Pt(POINT* Pt, Reactangular& r0)
 {
     for (size_t i = 0; i < 4; i++)
     {
-        Pt[i].x = 10 * r0.vertexs[i].vec[0] * 50 / r0.vertexs[i].vec[2];
-        Pt[i].y = 800 - 10 * r0.vertexs[i].vec[1] * 50 / r0.vertexs[i].vec[2];
+        Pt[i].x = 400 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
+        Pt[i].y = 400 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
         //Pt[i].x = r0.vertexs[i].vec[0] * (50 / r0.vertexs[i].vec[2]);
         //Pt[i].y = r0.vertexs[i].vec[1] * (50 / r0.vertexs[i].vec[2]);
     }
@@ -110,9 +138,9 @@ void init(HWND hWnd, HINSTANCE hInstance)
 {
     HDC hDC = GetDC(hWnd);
 
-    int count = 0;
+    int count = 99;
 _LOOP:
-    count++;
+
 
     Reactangular reacs[6];
     reacs[0].transform.forward = Vector4(0, 0, -1, 0);
@@ -127,20 +155,20 @@ _LOOP:
     reacs[2].transform.up = Vector4(0, 1, 0, 0);
     reacs[2].transform.right = Vector4(0, 0, 1, 0);
 
-    reacs[3].transform.position.vec[1] += 10;
-    reacs[3].transform.position.vec[0] -= 10;
+    reacs[3].transform.position.vec[1] += SIZE;
+    reacs[3].transform.position.vec[0] -= SIZE;
     reacs[3].transform.forward = Vector4(1, 0, 0, 0);
-    reacs[3].transform.up = Vector4(0, -1, 0, 0);
-    reacs[3].transform.right = Vector4(0, 0, 1, 0);
+    reacs[3].transform.up = Vector4(0, 1, 0, 0);
+    reacs[3].transform.right = Vector4(0, 0, -1, 0);
 
-    reacs[4].transform.position.vec[0] -= 10;
-    reacs[4].transform.position.vec[1] += 10;
+    reacs[4].transform.position.vec[0] -= SIZE;
+    reacs[4].transform.position.vec[1] += SIZE;
     reacs[4].transform.forward = Vector4(0, -1, 0, 0);
     reacs[4].transform.up = Vector4(0, 0, 1, 0);
     reacs[4].transform.right = Vector4(1, 0, 0, 0);
 
-    reacs[5].transform.position.vec[2] += 10;
-    reacs[5].transform.position.vec[0] -= 10;
+    reacs[5].transform.position.vec[2] += SIZE;
+    reacs[5].transform.position.vec[0] -= SIZE;
     reacs[5].transform.forward = Vector4(0, 0, 1, 0);
     reacs[5].transform.up = Vector4(0, 1, 0, 0);
     reacs[5].transform.right = Vector4(1, 0, 0, 0);
@@ -149,17 +177,18 @@ _LOOP:
     // 世界变换
     POINT Pt[4 * 6];
     Transform camera;
-    camera.position = Vector4(10, 10, 60, 1);
+    camera.position = Vector4(0, -10, 40, 1);
     camera.forward = Vector4(0, -1 * cos(3.14*count / 100), -1 * sin(3.14*count / 100), 0);
     camera.up = Vector4(0, 1 * sin(3.14*count / 100), -1 * cos(3.14*count / 100), 0);
     camera.right = Vector4(-1, 0, 0, 0);
 
-    HBRUSH burushed[6];
-
+    static HBRUSH burushed[6];
+    static Zbuffer buffers[6];
     for (int i = 0; i < 6; ++i)
     {
         burushed[i] = CreateSolidBrush(RGB(255*((i&4)>>2), 255*((i&2)>>1), 255*(i&1)));
     }
+    burushed[0] = CreateSolidBrush(RGB(100, 200, 250));
     for (size_t i = 0; i < 6; i++)
     {
         WT(reacs[i]);
@@ -168,22 +197,52 @@ _LOOP:
 
         float r = 0;
         float * vec = reacs[i].transform.forward.vec;
-        r = vec[0] * camera.position.vec[0] - vec[1] * camera.position.vec[1] + vec[2] * camera.position.vec[2];
-
-        if (1)
+        Vector4 view = camera.position - reacs[i].get_center();
+        float *view_vec = view.vec;
+        //view.vec[1] += 65;
+        view_vec[0] /= tan(3.14 / 6);
+        view_vec[1] /= tan(3.14 / 6);
+        view_vec[2] *= 0.9;
+        //r = view * reacs[i].transform.forward;
+        //r = vec[0] * camera.position.vec[0] + vec[1] * camera.position.vec[1] + vec[2] * camera.position.vec[2];
+        r = reacs[i].transform.forward * view;
+        //r = vec[0] + vec[1] + vec[2];
+        buffers[i].i = i;
+        if (r<0&&(i==0||i==5)||(r>0&&(i!=0&&i!=5)))
         {
-            SelectObject(hDC, burushed[i]);
-            Polygon(hDC, Pt + 4 * i, 4);
+            buffers[i].z = reacs[i].get_z();
+            //SelectObject(hDC, burushed[i]);
+            //Polygon(hDC, Pt + 4 * i, 4);
+        }
+        else
+        {
+            buffers[i].z = -1;
         }
     }
 
 
-
+    // zsort
+    vector<Zbuffer> bsort(6);
+    bsort.assign(buffers,buffers+6);
     
-    
-    Sleep(50);
-    if (count > 80)
+    sort(bsort.begin(), bsort.end(), [](const Zbuffer&x, const Zbuffer&y){return x.z > y.z; });
+    for (Zbuffer z : bsort)
+    {
+        if (z.z < 0)
+            break;
+        SelectObject(hDC, burushed[z.i]);
+        Polygon(hDC, Pt + 4 * z.i, 4);
+    }
+    Sleep(30);
+    count+=1;
+    if (count > 400)
         exit(0);
+    else 
+    {
+        static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
+        SelectObject(hDC, white_brush);
+        Rectangle(hDC, 0, 0, 800, 800);
+    }
     goto _LOOP;
 
     exit(0);

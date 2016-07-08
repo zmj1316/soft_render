@@ -3,6 +3,8 @@
 #define TRANSFORM_H
 #include "Vector4.h"
 #include "matrix.h"
+
+#define SIZE 10
 class Transform
 {
 public:
