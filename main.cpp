@@ -48,8 +48,9 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 		CW_USEDEFAULT, CW_USEDEFAULT, 800, 800,
 		NULL, NULL, hInstance, NULL);
+    UpdateWindow(hWnd);
 	init(hWnd, hInstance);
-	UpdateWindow(hWnd);
+	
 	while (GetMessage(&Msg, NULL, 0, 0))
 	{
 		TranslateMessage(&Msg);
@@ -185,6 +186,9 @@ bool check_point(int x, int y, POINT p[])
 void init(HWND hWnd, HINSTANCE hInstance)
 {
     HDC hDC = GetDC(hWnd);
+    HDC Memhdc = CreateCompatibleDC(hDC);
+    HBITMAP Membitmap = CreateCompatibleBitmap(hDC, 800, 800);
+    SelectObject(Memhdc, Membitmap);
 
     int count = 99;
 _LOOP:
@@ -278,8 +282,8 @@ _LOOP:
     {
         if (z.z < 0)
             break;
-        //SelectObject(hDC, burushed[z.i]);
-        //Polygon(hDC, Pt + 4 * z.i, 4);
+        //SelectObject(Memhdc, burushed[z.i]);
+        //Polygon(Memhdc, Pt + 4 * z.i, 4);
         POINT *p = Pt + 4 * z.i;
         int minx = 800, miny = 800, maxx = 0, maxy = 0;
         for (int i = 0; i < 4; ++i)
@@ -295,22 +299,23 @@ _LOOP:
             for (size_t j = minx; j < maxx; j++)
             {
                 if (check_point(i, j, p))
-                    SetPixel(hDC, i, j, RGB(25 * z.i, 25 * z.i, 25 * z.i));
+                    SetPixel(Memhdc, i, j, RGB(25 * z.i, 25 * z.i, 25 * z.i));
             }
         }
         //SetPixel(hDC, 100, 500, RGB(25, 0, 0));
         //SetPixel(hDC, 101, 500, RGB(25, 0, 0));
         //SetPixel(hDC, 99, 500, RGB(25, 0, 0));
     }
-    //Sleep(20);
+    Sleep(10);
     count+=1;
-    if (count > 400)
-        exit(0);
+    if (count > 400);
     else 
     {
+        BitBlt(hDC, 0, 0, 800, 800, Memhdc, 0, 0, SRCCOPY);
         static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
-        SelectObject(hDC, white_brush);
-        Rectangle(hDC, 0, 0, 800, 800);
+        SelectObject(Memhdc, white_brush);
+        Rectangle(Memhdc, 0, 0, 800, 800);
+        goto _LOOP;
         //RECT full_screen;
         //full_screen.left = 0;
         //full_screen.top = 0;
@@ -318,7 +323,11 @@ _LOOP:
         //full_screen.right = 800;
         //RedrawWindow(NULL, NULL, NULL, RDW_FRAME);
     }
-    goto _LOOP;
+    
+    DeleteObject(Membitmap);
+    DeleteDC(Memhdc);
+    DeleteDC(hDC);
+    EndPaint(hWnd,NULL);
 
     exit(0);
 }
