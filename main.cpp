@@ -46,7 +46,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	HWND  hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW,
 		TEXT("MAIN"), TEXT("TEST"),
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-		CW_USEDEFAULT, CW_USEDEFAULT, 800, 820,
+		CW_USEDEFAULT, CW_USEDEFAULT, 800, 800,
 		NULL, NULL, hInstance, NULL);
 	init(hWnd, hInstance);
 	UpdateWindow(hWnd);
@@ -132,6 +132,54 @@ void get_Pt(POINT* Pt, Reactangular& r0)
         //Pt[i].x = r0.vertexs[i].vec[0] * (50 / r0.vertexs[i].vec[2]);
         //Pt[i].y = r0.vertexs[i].vec[1] * (50 / r0.vertexs[i].vec[2]);
     }
+}
+
+struct Line
+{
+    int x, y; // point
+    float rate;
+};
+
+struct Line_point
+{
+    int x, y;
+    BYTE flag;
+};
+
+int f(int a, int b, int x, int y, POINT p[])
+{
+    return (p[a].y - p[b].y)*x - (p[b].x - p[a].x)*y + p[a].x*p[b].y - p[b].x*p[a].y;
+}
+
+bool check_point(int x, int y, POINT p[])
+{
+    //struct Line top, buttom, left, right;
+    //struct Line_point points[4];
+    //int centerx = 0, centery = 0;
+    //for (int i = 0; i < 4; ++i)
+    //{
+    //    centerx += p[i].x;
+    //    centery += p[i].y;
+    //}
+    //centerx /= 4;
+    //centery /= 4;
+    //if ()
+    float a = float(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
+    float b = float(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
+    //float c = f(0, 1, x, y, p) / f(0, 1, p[2].x, p[2].y, p);
+    float c = 1 - a - b;
+    if (a > 0 && a<1 && b>0 && b<1 && c>0 && c < 1)
+        return true;
+    {
+        a = float(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
+        b = float(f(0, 2, x, y, p)) / f(0, 2, p[3].x, p[3].y, p);
+        //float c = f(0, 1, x, y, p) / f(0, 1, p[2].x, p[2].y, p);
+        c = 1 - a - b;
+        if (a > 0 && a<1 && b>0 && b<1 && c>0 && c < 1)
+            return true;
+    }
+
+    return false;
 }
 
 void init(HWND hWnd, HINSTANCE hInstance)
@@ -230,10 +278,31 @@ _LOOP:
     {
         if (z.z < 0)
             break;
-        SelectObject(hDC, burushed[z.i]);
-        Polygon(hDC, Pt + 4 * z.i, 4);
+        //SelectObject(hDC, burushed[z.i]);
+        //Polygon(hDC, Pt + 4 * z.i, 4);
+        POINT *p = Pt + 4 * z.i;
+        int minx = 800, miny = 800, maxx = 0, maxy = 0;
+        for (int i = 0; i < 4; ++i)
+        {
+            POINT *pp = p + i;
+            if (minx>pp->x) minx = pp->x;
+            if (miny>pp->y) miny = pp->y;
+            if (maxx < pp->x) maxx = pp->x;
+            if (maxy < pp->y) maxy = pp->y;
+        }
+        for (size_t i = miny ; i < maxy; i++)
+        {
+            for (size_t j = minx; j < maxx; j++)
+            {
+                if (check_point(i, j, p))
+                    SetPixel(hDC, i, j, RGB(25 * z.i, 25 * z.i, 25 * z.i));
+            }
+        }
+        //SetPixel(hDC, 100, 500, RGB(25, 0, 0));
+        //SetPixel(hDC, 101, 500, RGB(25, 0, 0));
+        //SetPixel(hDC, 99, 500, RGB(25, 0, 0));
     }
-    Sleep(30);
+    //Sleep(20);
     count+=1;
     if (count > 400)
         exit(0);
@@ -242,6 +311,12 @@ _LOOP:
         static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
         SelectObject(hDC, white_brush);
         Rectangle(hDC, 0, 0, 800, 800);
+        //RECT full_screen;
+        //full_screen.left = 0;
+        //full_screen.top = 0;
+        //full_screen.bottom = 800;
+        //full_screen.right = 800;
+        //RedrawWindow(NULL, NULL, NULL, RDW_FRAME);
     }
     goto _LOOP;
 
