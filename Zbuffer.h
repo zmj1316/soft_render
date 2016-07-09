@@ -7,6 +7,6 @@ public:
 
     int x, y;
     float z;
-    int i;
+    unsigned char i;
 };
 

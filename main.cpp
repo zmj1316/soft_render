@@ -9,15 +9,23 @@ using   namespace   std;
 #include "matrix.h"
 #include "Zbuffer.h"
 #include <math.h>
+#include <omp.h>
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 800
+
+unsigned int colors[] = { 0x00F0F0E0,0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF };
+unsigned char RGBs[] = { 0xC0,0x0F,0xF0,0xFF,0x3E,0xE3,0x12,0x21 };
+char thread_count = 4;
+
 //----------函数声明---------------
 void init(HWND hWnd, HINSTANCE hInstance);
-void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//画点,也就是像素输出
-void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//----画矩形----
-void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//填充矩形
-void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//线框矩形
-void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps);//三角形
-void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//椭圆
-void DrawContent(HWND hWnd);
+//void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//画点,也就是像素输出
+//void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//----画矩形----
+//void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//填充矩形
+//void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//线框矩形
+//void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps);//三角形
+//void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//椭圆
+//void DrawContent(HWND hWnd);
 
 //-----回调函数-----------------
 LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
@@ -27,6 +35,7 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 {
 
 	WNDCLASSEX  WndCls;
+	omp_set_num_threads(thread_count);
 
 	MSG         Msg;
 	WndCls.cbSize = sizeof(WndCls);
@@ -48,8 +57,8 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 		CW_USEDEFAULT, CW_USEDEFAULT, 800, 800,
 		NULL, NULL, hInstance, NULL);
-    UpdateWindow(hWnd);
 	init(hWnd, hInstance);
+    UpdateWindow(hWnd);
 	
 	while (GetMessage(&Msg, NULL, 0, 0))
 	{
@@ -86,15 +95,15 @@ void VT(Reactangular& r, Transform t)
         float* vec = r.vertexs_world[i].vec;
         float new_vec[4];
 
-        matrix<float> m(4, 4);
-        for (size_t i = 0; i < 4; i++)
-        {
-            m.setvalue(i, 0, t.right.vec[i]);
-            m.setvalue(i, 1, t.up.vec[i]);
-            m.setvalue(i, 2, t.forward.vec[i]);
-            m.setvalue(i, 3, t.position.vec[i]);
-        }
-        m.invert();
+        //matrix<float> m(4, 4);
+        //for (size_t i = 0; i < 4; i++)
+        //{
+        //    m.setvalue(i, 0, t.right.vec[i]);
+        //    m.setvalue(i, 1, t.up.vec[i]);
+        //    m.setvalue(i, 2, t.forward.vec[i]);
+        //    m.setvalue(i, 3, t.position.vec[i]);
+        //}
+        //m.invert();
 
         for (size_t i = 0; i < 4; i++)
         {
@@ -128,8 +137,8 @@ void get_Pt(POINT* Pt, Reactangular& r0)
 {
     for (size_t i = 0; i < 4; i++)
     {
-        Pt[i].x = 400 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
-        Pt[i].y = 400 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
+        Pt[i].x = 200 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
+        Pt[i].y = 200 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
         //Pt[i].x = r0.vertexs[i].vec[0] * (50 / r0.vertexs[i].vec[2]);
         //Pt[i].y = r0.vertexs[i].vec[1] * (50 / r0.vertexs[i].vec[2]);
     }
@@ -149,38 +158,51 @@ struct Line_point
 
 int f(int a, int b, int x, int y, POINT p[])
 {
-    return (p[a].y - p[b].y)*x - (p[b].x - p[a].x)*y + p[a].x*p[b].y - p[b].x*p[a].y;
+	return (p[a].y - p[b].y)*(x-p[b].x) + (p[b].x - p[a].x)*(y - p[b].y);
+	//return (p[a].y - p[b].y)*x - (p[b].x - p[a].x)*y + p[a].x*p[b].y - p[b].x*p[a].y;
 }
 
-bool check_point(int x, int y, POINT p[])
+
+float check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward)
 {
-    //struct Line top, buttom, left, right;
-    //struct Line_point points[4];
-    //int centerx = 0, centery = 0;
-    //for (int i = 0; i < 4; ++i)
-    //{
-    //    centerx += p[i].x;
-    //    centery += p[i].y;
-    //}
-    //centerx /= 4;
-    //centery /= 4;
-    //if ()
     float a = float(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
     float b = float(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
-    //float c = f(0, 1, x, y, p) / f(0, 1, p[2].x, p[2].y, p);
-    float c = 1 - a - b;
-    if (a > 0 && a<1 && b>0 && b<1 && c>0 && c < 1)
-        return true;
+	float c = float(f(0, 1, x, y, p)) / f(0, 1, p[2].x, p[2].y, p);
+    if (a >= 0 && a<=1 && b>=0 && b<=1 && c>=0 && c <= 1)
+    {
+		Vector4 point = a*vecs[0] + b*vecs[1] + c*vecs[2];
+		Vector4 light = point - light_spot;
+		float diff = light.normal()*forward.normal();
+		Vector4 relfect = 2.0*diff * forward - light;
+		relfect = relfect.normal();
+		float spec = pow(max(0, relfect*point.normal()),3);
+
+		//if (diff < 0)
+		//	diff = -diff;
+		return spec;
+    }
+	else
     {
         a = float(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
         b = float(f(0, 2, x, y, p)) / f(0, 2, p[3].x, p[3].y, p);
-        //float c = f(0, 1, x, y, p) / f(0, 1, p[2].x, p[2].y, p);
-        c = 1 - a - b;
-        if (a > 0 && a<1 && b>0 && b<1 && c>0 && c < 1)
-            return true;
+        c = float(f(2, 3, x, y, p)) / f(2, 3, p[0].x, p[0].y, p);
+        //c = 1 - a - b;
+        if (a >= 0 && a<=1 && b>=0 && b<=1 && c>=0 && c <= 1)
+        {
+			Vector4 point = a*vecs[2] + b*vecs[3] + c*vecs[0];
+			Vector4 light = point - light_spot;
+			float diff = light.normal()*forward.normal();
+			Vector4 relfect = 2.0*diff * forward - light;
+			relfect = relfect.normal();
+			float spec = pow(max(0, relfect*point.normal()), 3);
+
+			//if (diff < 0)
+			//	diff = -diff;
+			return spec;
+        }
     }
 
-    return false;
+    return -1;
 }
 
 void init(HWND hWnd, HINSTANCE hInstance)
@@ -189,11 +211,26 @@ void init(HWND hWnd, HINSTANCE hInstance)
     HDC Memhdc = CreateCompatibleDC(hDC);
     HBITMAP Membitmap = CreateCompatibleBitmap(hDC, 800, 800);
     SelectObject(Memhdc, Membitmap);
+	BITMAPINFO  bmp_info;
+	bmp_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);//结构体的字节数
+	bmp_info.bmiHeader.biWidth = WINDOW_WIDTH;//以像素为单位的位图宽
+	bmp_info.bmiHeader.biHeight = -WINDOW_HEIGHT;//以像素为单位的位图高,若为负，表示以左上角为原点，否则以左下角为原点
+	bmp_info.bmiHeader.biPlanes = 1;//目标设备的平面数，必须设置为1
+	bmp_info.bmiHeader.biBitCount = 32; //位图中每个像素的位数
+	bmp_info.bmiHeader.biCompression = BI_RGB;
+	bmp_info.bmiHeader.biSizeImage = 0;
+	bmp_info.bmiHeader.biXPelsPerMeter = 0;
+	bmp_info.bmiHeader.biYPelsPerMeter = 0;
+	bmp_info.bmiHeader.biClrUsed = 0;
+	bmp_info.bmiHeader.biClrImportant = 0;
 
-    int count = 99;
-_LOOP:
+	unsigned int *buffer = (unsigned int *)malloc(sizeof(int)*WINDOW_HEIGHT*WINDOW_WIDTH);
 
+	auto now_bitmap = CreateDIBSection(Memhdc, &bmp_info, DIB_RGB_COLORS, (void**)&buffer, NULL, 0);
 
+    int count = 0;
+	LARGE_INTEGER t1, t2, tf;
+	QueryPerformanceFrequency(&tf);
     Reactangular reacs[6];
     reacs[0].transform.forward = Vector4(0, 0, -1, 0);
     reacs[0].transform.up = Vector4(0, 1, 0, 0);
@@ -225,46 +262,45 @@ _LOOP:
     reacs[5].transform.up = Vector4(0, 1, 0, 0);
     reacs[5].transform.right = Vector4(1, 0, 0, 0);
 
-
     // 世界变换
     POINT Pt[4 * 6];
     Transform camera;
-    camera.position = Vector4(0, -10, 40, 1);
-    camera.forward = Vector4(0, -1 * cos(3.14*count / 100), -1 * sin(3.14*count / 100), 0);
-    camera.up = Vector4(0, 1 * sin(3.14*count / 100), -1 * cos(3.14*count / 100), 0);
-    camera.right = Vector4(-1, 0, 0, 0);
+	Zbuffer buffers[6];
+while(1)
+{
+	
+	//QueryPerformanceCounter(&t1);
 
-    static HBRUSH burushed[6];
-    static Zbuffer buffers[6];
-    for (int i = 0; i < 6; ++i)
-    {
-        burushed[i] = CreateSolidBrush(RGB(255*((i&4)>>2), 255*((i&2)>>1), 255*(i&1)));
-    }
-    burushed[0] = CreateSolidBrush(RGB(100, 200, 250));
-    for (size_t i = 0; i < 6; i++)
+    camera.position = Vector4(-3 , -5, 30 - 2 * sin(3.14*count / 400), 1);
+	camera.forward = Vector4(0, -1 * cos(3.14*count / 300), -1 * sin(3.14*count / 300), 0);
+	camera.up = Vector4(0, 1 * sin(3.14*count / 300), -1 * cos(3.14*count / 300), 0);
+	//camera.forward = Vector4(0, -0.7, -0.7, 0);
+	//camera.up = Vector4(0, 0.7, -0.7, 0);
+	camera.right = Vector4(-1, 0, 0, 0);
+	Vector4 light(100,500,500, 0);
+
+
+
+	#pragma omp parallel for
+    for (int i = 0; i < 6; i++)
     {
         WT(reacs[i]);
         VT(reacs[i], camera);
         get_Pt(Pt + 4 * i, reacs[i]);
-
+		if (i == 0 || i == 5)
+			reacs[i].transform.forward = -reacs[i].transform.forward;
         float r = 0;
         float * vec = reacs[i].transform.forward.vec;
         Vector4 view = camera.position - reacs[i].get_center();
         float *view_vec = view.vec;
-        //view.vec[1] += 65;
         view_vec[0] /= tan(3.14 / 6);
         view_vec[1] /= tan(3.14 / 6);
         view_vec[2] *= 0.9;
-        //r = view * reacs[i].transform.forward;
-        //r = vec[0] * camera.position.vec[0] + vec[1] * camera.position.vec[1] + vec[2] * camera.position.vec[2];
         r = reacs[i].transform.forward * view;
-        //r = vec[0] + vec[1] + vec[2];
         buffers[i].i = i;
-        if (r<0&&(i==0||i==5)||(r>0&&(i!=0&&i!=5)))
+        if (r>0)
         {
             buffers[i].z = reacs[i].get_z();
-            //SelectObject(hDC, burushed[i]);
-            //Polygon(hDC, Pt + 4 * i, 4);
         }
         else
         {
@@ -284,6 +320,11 @@ _LOOP:
             break;
         //SelectObject(Memhdc, burushed[z.i]);
         //Polygon(Memhdc, Pt + 4 * z.i, 4);
+		//Vector4 directioin = light - reacs[z.i].transform.forward;
+		//float diff = light*reacs[z.i].transform.forward/(reacs[z.i].transform.forward.mod());
+		//if (diff > 0) diff = 0;
+		//else diff = -diff;
+		//diff += 0.2;
         POINT *p = Pt + 4 * z.i;
         int minx = 800, miny = 800, maxx = 0, maxy = 0;
         for (int i = 0; i < 4; ++i)
@@ -294,36 +335,48 @@ _LOOP:
             if (maxx < pp->x) maxx = pp->x;
             if (maxy < pp->y) maxy = pp->y;
         }
-        for (size_t i = miny ; i < maxy; i++)
+		if (maxx > 800) maxx = 800;
+		if (maxy > 800) maxy = 800;
+		if (minx < 0) minx = 0;
+		if (miny < 0) miny = 0;
+		int i, j;
+        for (i = minx ; i < maxx; i++)
         {
-            for (size_t j = minx; j < maxx; j++)
+		#pragma omp parallel for
+            for (j = miny; j < maxy; j++)
             {
-                if (check_point(i, j, p))
-                    SetPixel(Memhdc, i, j, RGB(25 * z.i, 25 * z.i, 25 * z.i));
+				float diff;
+				int color;
+				color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward);
+                if ((diff = check_point(i, j, p,reacs[z.i].vertexs_view,light,reacs[z.i].transform.forward))>=0)
+                {
+					diff += 0.1;
+					//if (diff > 1) diff = 1;
+                    //SetPixel(Memhdc, i, j, RGB(223 * ((z.i & 4) >> 2) + 10, 223 * ((z.i & 2) >> 1) + 10, 223 * (z.i & 1) +10));
+					//*(buffer + j*WINDOW_WIDTH + i) = ((int(155 * ((z.i & 4) >> 2) * diff) << 16 | (int(155 * ((z.i & 2) >> 1) * diff) << 8) | (int(155 * (z.i & 1) * diff))));
+					*(buffer + j*WINDOW_WIDTH + i) = byte(diff*RGBs[z.i + 1])<<16 | byte(diff*RGBs[z.i + 2])<<8 | byte(diff*RGBs[z.i - 3]);
+                }
             }
         }
-        //SetPixel(hDC, 100, 500, RGB(25, 0, 0));
-        //SetPixel(hDC, 101, 500, RGB(25, 0, 0));
-        //SetPixel(hDC, 99, 500, RGB(25, 0, 0));
     }
-    Sleep(10);
     count+=1;
-    if (count > 400);
+    if (count > 1000)
+    {
+		break;
+    }
     else 
     {
-        BitBlt(hDC, 0, 0, 800, 800, Memhdc, 0, 0, SRCCOPY);
-        static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
-        SelectObject(Memhdc, white_brush);
-        Rectangle(Memhdc, 0, 0, 800, 800);
-        goto _LOOP;
-        //RECT full_screen;
-        //full_screen.left = 0;
-        //full_screen.top = 0;
-        //full_screen.bottom = 800;
-        //full_screen.right = 800;
-        //RedrawWindow(NULL, NULL, NULL, RDW_FRAME);
+        //BitBlt(hDC, 0, 0, 800, 800, Memhdc, 0, 0, SRCCOPY);
+        //static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
+        //SelectObject(Memhdc, white_brush);
+        //Rectangle(Memhdc, 0, 0, 800, 800);
+		SelectObject(Memhdc, now_bitmap);
+		BitBlt(hDC, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Memhdc, 0, 0, SRCCOPY);
+		memset(buffer, 0x00, sizeof(int)*WINDOW_WIDTH*WINDOW_HEIGHT);
+		//QueryPerformanceCounter(&t2);
+		//printf("Lasting Time: %lf us\n", (1000000.0*t2.QuadPart - 1000000.0*t1.QuadPart) / tf.QuadPart);
     }
-    
+}
     DeleteObject(Membitmap);
     DeleteDC(Memhdc);
     DeleteDC(hDC);
@@ -346,49 +399,49 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 	case WM_COMMAND:
 		HWND h;
 		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("画点"));
-		if (DWORD(lParam) == int(h))
-		{
-			pix(hWnd, hDC, NewBrush, Ps);
-			break;
-		}
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		pix(hWnd, hDC, NewBrush, Ps);
+	//		break;
+	//	}
 
-		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("矩形"));
-		if (DWORD(lParam) == int(h))
-		{
-			rect(hWnd, hDC, NewBrush, Ps);
-			break;
-		}
+	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("矩形"));
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		rect(hWnd, hDC, NewBrush, Ps);
+	//		break;
+	//	}
 
-		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("填充矩形"));
-		if (DWORD(lParam) == int(h))
-		{
-			fillrect(hWnd, hDC, NewBrush, r, Ps);
-			break;
-		}
+	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("填充矩形"));
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		fillrect(hWnd, hDC, NewBrush, r, Ps);
+	//		break;
+	//	}
 
-		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("线框矩形"));
-		if (DWORD(lParam) == int(h))
-		{
-			linerect(hWnd, hDC, NewBrush, r, Ps);
-			break;
-		}
+	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("线框矩形"));
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		linerect(hWnd, hDC, NewBrush, r, Ps);
+	//		break;
+	//	}
 
-		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("三角形"));
-		if (DWORD(lParam) == int(h))
-		{
-			triangle(hWnd, hDC, NewBrush, Pt, Ps);
-			break;
-		}
+	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("三角形"));
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		triangle(hWnd, hDC, NewBrush, Pt, Ps);
+	//		break;
+	//	}
 
-		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("椭圆"));
-		if (DWORD(lParam) == int(h))
-		{
-			ellipse(hWnd, hDC, NewBrush, r, Ps);
-			break;
-		}
-	case WM_PAINT:
-		DrawContent(hWnd);//为什么加了这一句后开始按钮就会显示，而不加的话按钮需要重绘以后显示
-		break;
+	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("椭圆"));
+	//	if (DWORD(lParam) == int(h))
+	//	{
+	//		ellipse(hWnd, hDC, NewBrush, r, Ps);
+	//		break;
+	//	}
+	//case WM_PAINT:
+	//	DrawContent(hWnd);//为什么加了这一句后开始按钮就会显示，而不加的话按钮需要重绘以后显示
+	//	break;
 
 	case WM_DESTROY:
 		PostQuitMessage(WM_QUIT);
@@ -399,121 +452,121 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 	return 0;
 }
 
-
-
-//画点
-void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
-{
-	//hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_PAINT响应，但是WM_PAINT里面只有DrawContent(hWnd);
-	//所以用getDC
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-	//SelectObject(hDC, NewBrush);
-	for (int x = 500; x<600; x++)//由于一个点太小了，所以这里花了100个点构成线段
-		SetPixel(hDC, x, 50, RGB(255, 0, 0));
-	//DeleteObject(NewBrush);
-	//EndPaint(hWnd, &Ps);
-	ReleaseDC(hWnd, hDC);
-}
-//矩形
-void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
-{
-	//hDC = BeginPaint(hWnd, &Ps);
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-	SelectObject(hDC, NewBrush);
-	Rectangle(hDC, 400, 400, 500, 500);
-	DeleteObject(NewBrush);
-	ReleaseDC(hWnd, hDC);
-	//EndPaint(hWnd, &Ps);
-}
-
-//填充矩形
-void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
-{
-	//hDC = BeginPaint(hWnd, &Ps);
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
-	SelectObject(hDC, NewBrush);
-	SetRect(&r, 200, 200, 250, 250);
-	FillRect(hDC, &r, NewBrush);
-	DeleteObject(NewBrush);
-	//EndPaint(hWnd, &Ps);
-	ReleaseDC(hWnd, hDC);
-}
-
-//线框矩形
-void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
-{
-	//hDC = BeginPaint(hWnd, &Ps);
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
-	SelectObject(hDC, NewBrush);
-	SetRect(&r, 250, 250, 400, 400);
-	FrameRect(hDC, &r, NewBrush);
-	DeleteObject(NewBrush);
-	DeleteObject(NewBrush);
-	//EndPaint(hWnd, &Ps);
-	ReleaseDC(hWnd, hDC);
-}
-//三角形
-void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps)
-{
-	//hDC = BeginPaint(hWnd, &Ps);
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(50, 50, 50));
-	SelectObject(hDC, NewBrush);
-	Pt[0].x = 425; Pt[0].y = 40;
-	Pt[1].x = 395; Pt[1].y = 70;
-	Pt[2].x = 455; Pt[2].y = 70;
-	Polygon(hDC, Pt, 3);
-	DeleteObject(NewBrush);
-
-	NewBrush = CreateSolidBrush(RGB(0, 255, 0));
-	SelectObject(hDC, NewBrush);
-	Pt[0].x = 365; Pt[0].y = 110;
-	Pt[1].x = 395; Pt[1].y = 80;
-	Pt[2].x = 395; Pt[2].y = 140;
-	Polygon(hDC, Pt, 3);
-	DeleteObject(NewBrush);
-
-	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-	SelectObject(hDC, NewBrush);
-	Pt[0].x = 485; Pt[0].y = 110;
-	Pt[1].x = 455; Pt[1].y = 80;
-	Pt[2].x = 455; Pt[2].y = 140;
-	Polygon(hDC, Pt, 3);
-	DeleteObject(NewBrush);
-
-	NewBrush = CreateSolidBrush(RGB(0, 0, 255));
-	SelectObject(hDC, NewBrush);
-	Pt[0].x = 425; Pt[0].y = 180;
-	Pt[1].x = 455; Pt[1].y = 150;
-	Pt[2].x = 395; Pt[2].y = 150;
-	Polygon(hDC, Pt, 3);
-	DeleteObject(NewBrush);
-	//EndPaint(hWnd, &Ps);
-	ReleaseDC(hWnd, hDC);
-}
-
-//椭圆
-void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)//椭圆
-{
-	//hDC = BeginPaint(hWnd, &Ps);
-	hDC = GetDC(hWnd);
-	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-	SelectObject(hDC, NewBrush);
-	Ellipse(hDC, 500, 500, 600, 600);
-	DeleteObject(NewBrush);
-	//EndPaint(hWnd, &Ps);
-	ReleaseDC(hWnd, hDC);
-}
-
-void DrawContent(HWND hWnd)
-{
-	HDC         hDC;
-	PAINTSTRUCT Ps;
-	hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_Paint响应
-	EndPaint(hWnd, &Ps);
-
-}
+//
+//
+////画点
+//void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_PAINT响应，但是WM_PAINT里面只有DrawContent(hWnd);
+//	//所以用getDC
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
+//	//SelectObject(hDC, NewBrush);
+//	for (int x = 500; x<600; x++)//由于一个点太小了，所以这里花了100个点构成线段
+//		SetPixel(hDC, x, 50, RGB(255, 0, 0));
+//	//DeleteObject(NewBrush);
+//	//EndPaint(hWnd, &Ps);
+//	ReleaseDC(hWnd, hDC);
+//}
+////矩形
+//void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
+//	SelectObject(hDC, NewBrush);
+//	Rectangle(hDC, 400, 400, 500, 500);
+//	DeleteObject(NewBrush);
+//	ReleaseDC(hWnd, hDC);
+//	//EndPaint(hWnd, &Ps);
+//}
+//
+////填充矩形
+//void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
+//	SelectObject(hDC, NewBrush);
+//	SetRect(&r, 200, 200, 250, 250);
+//	FillRect(hDC, &r, NewBrush);
+//	DeleteObject(NewBrush);
+//	//EndPaint(hWnd, &Ps);
+//	ReleaseDC(hWnd, hDC);
+//}
+//
+////线框矩形
+//void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
+//	SelectObject(hDC, NewBrush);
+//	SetRect(&r, 250, 250, 400, 400);
+//	FrameRect(hDC, &r, NewBrush);
+//	DeleteObject(NewBrush);
+//	DeleteObject(NewBrush);
+//	//EndPaint(hWnd, &Ps);
+//	ReleaseDC(hWnd, hDC);
+//}
+////三角形
+//void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps)
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(50, 50, 50));
+//	SelectObject(hDC, NewBrush);
+//	Pt[0].x = 425; Pt[0].y = 40;
+//	Pt[1].x = 395; Pt[1].y = 70;
+//	Pt[2].x = 455; Pt[2].y = 70;
+//	Polygon(hDC, Pt, 3);
+//	DeleteObject(NewBrush);
+//
+//	NewBrush = CreateSolidBrush(RGB(0, 255, 0));
+//	SelectObject(hDC, NewBrush);
+//	Pt[0].x = 365; Pt[0].y = 110;
+//	Pt[1].x = 395; Pt[1].y = 80;
+//	Pt[2].x = 395; Pt[2].y = 140;
+//	Polygon(hDC, Pt, 3);
+//	DeleteObject(NewBrush);
+//
+//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
+//	SelectObject(hDC, NewBrush);
+//	Pt[0].x = 485; Pt[0].y = 110;
+//	Pt[1].x = 455; Pt[1].y = 80;
+//	Pt[2].x = 455; Pt[2].y = 140;
+//	Polygon(hDC, Pt, 3);
+//	DeleteObject(NewBrush);
+//
+//	NewBrush = CreateSolidBrush(RGB(0, 0, 255));
+//	SelectObject(hDC, NewBrush);
+//	Pt[0].x = 425; Pt[0].y = 180;
+//	Pt[1].x = 455; Pt[1].y = 150;
+//	Pt[2].x = 395; Pt[2].y = 150;
+//	Polygon(hDC, Pt, 3);
+//	DeleteObject(NewBrush);
+//	//EndPaint(hWnd, &Ps);
+//	ReleaseDC(hWnd, hDC);
+//}
+//
+////椭圆
+//void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)//椭圆
+//{
+//	//hDC = BeginPaint(hWnd, &Ps);
+//	hDC = GetDC(hWnd);
+//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
+//	SelectObject(hDC, NewBrush);
+//	Ellipse(hDC, 500, 500, 600, 600);
+//	DeleteObject(NewBrush);
+//	//EndPaint(hWnd, &Ps);
+//	ReleaseDC(hWnd, hDC);
+//}
+//
+//void DrawContent(HWND hWnd)
+//{
+//	HDC         hDC;
+//	PAINTSTRUCT Ps;
+//	hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_Paint响应
+//	EndPaint(hWnd, &Ps);
+//
+//}

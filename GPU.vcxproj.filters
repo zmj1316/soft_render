@@ -30,6 +30,9 @@
     <ClCompile Include="Cube.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Zbuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Vector4.h">
@@ -45,6 +48,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="matrix.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Zbuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
