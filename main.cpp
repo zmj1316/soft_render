@@ -14,8 +14,8 @@ using   namespace   std;
 #define WINDOW_HEIGHT 800
 
 unsigned int colors[] = { 0x00F0F0E0,0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF };
-unsigned char RGBs[] = { 0xC0,0x0F,0xF0,0xFF,0x3E,0xE3,0x12,0x21 };
-char thread_count = 4;
+unsigned char RGBs[] = { 0x1F,0x3F,0x5F,0x7F,0x9F,0xbF,0xdF,0xfF };
+char thread_count = 2;
 
 //----------函数声明---------------
 void init(HWND hWnd, HINSTANCE hInstance);
@@ -87,46 +87,31 @@ void WT(Reactangular &r0)
     }
 }
 
+void transform(float* vec_src, float *vec_dst, Transform t)
+{
+	float new_vec[4];
+	for (size_t i = 0; i < 4; i++)
+	{
+		new_vec[i] = t.right.vec[i] * vec_src[0]
+			+ t.up.vec[i] * vec_src[1]
+			+ t.forward.vec[i] * vec_src[2]
+			+ t.position.vec[i] * vec_src[3];
+	}
+	memcpy(vec_dst, new_vec, 4 * sizeof(float));
+}
+
 // 视角变换
 void VT(Reactangular& r, Transform t)
 {
     for (size_t i = 0; i < 4; i++)
     {
         float* vec = r.vertexs_world[i].vec;
-        float new_vec[4];
-
-        //matrix<float> m(4, 4);
-        //for (size_t i = 0; i < 4; i++)
-        //{
-        //    m.setvalue(i, 0, t.right.vec[i]);
-        //    m.setvalue(i, 1, t.up.vec[i]);
-        //    m.setvalue(i, 2, t.forward.vec[i]);
-        //    m.setvalue(i, 3, t.position.vec[i]);
-        //}
-        //m.invert();
-
-        for (size_t i = 0; i < 4; i++)
-        {
-            new_vec[i] = t.right.vec[i] * vec[0]
-                + t.up.vec[i] * vec[1]
-                + t.forward.vec[i] * vec[2]
-                + t.position.vec[i] * vec[3];
-            //float right, up, forward, position;
-            //bool res;
-            //m.getvalue(i, 0, right, res);
-            //m.getvalue(i, 1, up, res);
-            //m.getvalue(i, 2, forward, res);
-            //m.getvalue(i, 3, position, res);
-            //new_vec[i] = right*vec[0]
-            //    + up*vec[1]
-            //    + forward*vec[2]
-            //    + position*vec[3];
-        }
-        new_vec[0] /= tan(3.14 / 6);
-        new_vec[1] /= tan(3.14 / 6);
-        new_vec[2] *= 0.9;
-        new_vec[2] -= 0;
-        memcpy(r.vertexs_view[i].vec, new_vec, 4 * sizeof(float));
+		float * dst = r.vertexs_view[i].vec;
+		transform(vec, dst, t);
+        dst[0] /= tan(3.14 / 6);
+        dst[1] /= tan(3.14 / 6);
+        dst[2] *= 0.9;
+        dst[2] -= 0;
         Vector4 t0 = r.vertexs_view[1] - r.vertexs_view[0];
         Vector4 t1 = r.vertexs_view[2] - r.vertexs_view[0];
         r.transform.forward = t0 / t1;
@@ -163,7 +148,7 @@ int f(int a, int b, int x, int y, POINT p[])
 }
 
 
-float check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward)
+int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward)
 {
     float a = float(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
     float b = float(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
@@ -175,12 +160,11 @@ float check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Ve
 		float diff = light.normal()*forward.normal();
 		Vector4 relfect = 2.0*diff * forward - light;
 		relfect = relfect.normal();
-		float spec = pow(max(0, relfect*point.normal()),3);
-
-		//if (diff < 0)
-		//	diff = -diff;
-		return spec;
-    }
+		float spec = pow(max(0, relfect*point.normal()),2);
+		spec *= 1.3;
+		spec += 0.05;
+		return byte((spec)* (0xFF * b)) << 16 | byte((spec)* (0xFF * c)) << 8 | byte((spec)* (0xFF * a));
+	}
 	else
     {
         a = float(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
@@ -194,11 +178,15 @@ float check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Ve
 			float diff = light.normal()*forward.normal();
 			Vector4 relfect = 2.0*diff * forward - light;
 			relfect = relfect.normal();
-			float spec = pow(max(0, relfect*point.normal()), 3);
-
+			float spec = pow(max(0, relfect*point.normal()), 2);
+			spec *= 1.3;
+			spec += 0.05;
 			//if (diff < 0)
 			//	diff = -diff;
-			return spec;
+			//return spec;
+			return byte((spec) * (0xFF*b)) << 16 | byte((spec) * (0xFF*a)) << 8 | byte((spec)* (0xFF*c));
+
+
         }
     }
 
@@ -271,13 +259,14 @@ while(1)
 	
 	//QueryPerformanceCounter(&t1);
 
-    camera.position = Vector4(-3 , -5, 30 - 2 * sin(3.14*count / 400), 1);
-	camera.forward = Vector4(0, -1 * cos(3.14*count / 300), -1 * sin(3.14*count / 300), 0);
-	camera.up = Vector4(0, 1 * sin(3.14*count / 300), -1 * cos(3.14*count / 300), 0);
+    camera.position = Vector4(5, -5, 40 + 2 * sin(3.14*count / 300), 1);
+	camera.forward = Vector4(0, -1 * cos(3.14*count / 300), -1 * sin(3.14*-count / 300), 0);
+	camera.up = Vector4(0, 1 * sin(-3.14*count / 300), -1 * cos(3.14*count / 300), 0);
 	//camera.forward = Vector4(0, -0.7, -0.7, 0);
 	//camera.up = Vector4(0, 0.7, -0.7, 0);
 	camera.right = Vector4(-1, 0, 0, 0);
-	Vector4 light(100,500,500, 0);
+	Vector4 light(30 - 5 * cos(3.14*count / 500), 20-5 * sin(3.14*count / 500), -100, 0);
+	transform(light.vec, light.vec, camera);
 
 
 
@@ -327,6 +316,11 @@ while(1)
 		//diff += 0.2;
         POINT *p = Pt + 4 * z.i;
         int minx = 800, miny = 800, maxx = 0, maxy = 0;
+		// sort points
+		int max_sum = 0;
+		int min_sum = 800;
+		int min_p = 0;
+		int max_p = 0;
         for (int i = 0; i < 4; ++i)
         {
             POINT *pp = p + i;
@@ -334,11 +328,50 @@ while(1)
             if (miny>pp->y) miny = pp->y;
             if (maxx < pp->x) maxx = pp->x;
             if (maxy < pp->y) maxy = pp->y;
+
+			int sum = p[i].x + p[i].y;
+			if (sum > max_sum)
+			{
+				max_sum = sum;
+				max_p = i;
+			}
+			if (sum < min_sum)
+			{
+				min_sum = sum;
+				min_p = i;
+			}
         }
 		if (maxx > 800) maxx = 800;
 		if (maxy > 800) maxy = 800;
 		if (minx < 0) minx = 0;
 		if (miny < 0) miny = 0;
+
+
+		POINT sorted_p[4];
+		sorted_p[0] = p[min_p];
+		sorted_p[2] = p[max_p];
+		bool flag_b = true;
+		for (size_t i = 0; i < 4; i++)
+		{
+			if(i!=min_p&&i!=max_p)
+			{
+				if (flag_b)
+					sorted_p[1] = p[i];
+				else
+					sorted_p[3] = p[i];
+				flag_b = false;
+			}
+		}
+		if(sorted_p[1].x<sorted_p[3].x)
+		{
+			POINT tmp = sorted_p[1];
+			sorted_p[1] = sorted_p[3];
+			sorted_p[3] = tmp;
+		}
+
+
+
+
 		int i, j;
         for (i = minx ; i < maxx; i++)
         {
@@ -348,19 +381,21 @@ while(1)
 				float diff;
 				int color;
 				color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward);
-                if ((diff = check_point(i, j, p,reacs[z.i].vertexs_view,light,reacs[z.i].transform.forward))>=0)
+                //if ((diff = check_point(i, j, p,reacs[z.i].vertexs_view,light,reacs[z.i].transform.forward))>=0)
+				if(color>=0)
                 {
-					diff += 0.1;
+					//diff += 0.1;
 					//if (diff > 1) diff = 1;
                     //SetPixel(Memhdc, i, j, RGB(223 * ((z.i & 4) >> 2) + 10, 223 * ((z.i & 2) >> 1) + 10, 223 * (z.i & 1) +10));
 					//*(buffer + j*WINDOW_WIDTH + i) = ((int(155 * ((z.i & 4) >> 2) * diff) << 16 | (int(155 * ((z.i & 2) >> 1) * diff) << 8) | (int(155 * (z.i & 1) * diff))));
-					*(buffer + j*WINDOW_WIDTH + i) = byte(diff*RGBs[z.i + 1])<<16 | byte(diff*RGBs[z.i + 2])<<8 | byte(diff*RGBs[z.i - 3]);
+					//*(buffer + j*WINDOW_WIDTH + i) = byte(diff*RGBs[z.i + 1])<<16 | byte(diff*RGBs[z.i + 2])<<8 | byte(diff*RGBs[z.i - 3]);
+					*(buffer + j*WINDOW_WIDTH + i) = color;
                 }
             }
         }
     }
     count+=1;
-    if (count > 1000)
+    if (count > 500)
     {
 		break;
     }
