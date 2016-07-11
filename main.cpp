@@ -186,6 +186,15 @@ int do_RGB(int color, float diff)
     return do_RGB((color >> 16) * diff, (color >> 8) * diff, color*diff);
 }
 
+float my_pow(float a, int n)
+{
+    for (size_t i = 0; i < n; i++)
+    {
+        a = a*a;
+    }
+    return a;
+}
+
 int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward, Vector4 view_pos)
 {
     static unsigned char * map = readBMP(map_name);
@@ -202,7 +211,7 @@ int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vect
         diff += 0.1;
         Vector4 relfect = 2.0*diff * (forward.normal()) - light.normal();
         relfect = relfect.normal();
-        double spec = pow(max(0, relfect*(point - view_pos).normal()), 200);
+        double spec = my_pow(max(0, relfect*(point - view_pos).normal()), 2);
         float zr = a / vecs[0].vec[2] + b / vecs[1].vec[2] + c / vecs[2].vec[2];
         int u = ((a*(0 / vecs[2].vec[2]) + b*(0 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr) * map_width;
         int v = ((a*(0 / vecs[2].vec[2]) + b*(1 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr) * map_height;
@@ -225,7 +234,7 @@ int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vect
             diff += 0.1;
 			Vector4 relfect = 2.0*diff * (forward.normal()) - light.normal();
 			relfect = relfect.normal();
-            float spec = pow(max(0, relfect*(point - view_pos).normal()), 256);
+            float spec = my_pow(max(0, relfect*(point - view_pos).normal()), 2);
 
             //float spec = max(0, relfect*(point - view_pos).normal());
             ////float spec2 = spec;
@@ -313,9 +322,9 @@ void init(HWND hWnd, HINSTANCE hInstance)
 while(1)
 {
 	
-	//QueryPerformanceCounter(&t1);
+	QueryPerformanceCounter(&t1);
 
-    camera.position = Vector4(-2 * cos(3.14*count / 500), -2 * cos(3.14*count / 500), 80 - 10 * sin(3.14*count / 500), 1);
+    camera.position = Vector4(-2 * cos(3.14*count / 500), -2 * cos(3.14*count / 500), 80 - 20 * sin(3.14*count / 500), 1);
 	camera.forward = Vector4(0, -1 * cos(3.14*count / 500), -1 * sin(3.14*-count / 500), 0);
 	camera.up = Vector4(0, 1 * sin(-3.14*count / 500), -1 * cos(3.14*count / 500), 0);
 	//camera.forward = Vector4(0, -0.7, -0.7, 0);
@@ -395,32 +404,6 @@ while(1)
 		if (minx < 0) minx = 0;
 		if (miny < 0) miny = 0;
 
-
-		POINT sorted_p[4];
-		sorted_p[0] = p[min_p];
-		sorted_p[2] = p[max_p];
-		bool flag_b = true;
-		for (size_t i = 0; i < 4; i++)
-		{
-			if(i!=min_p&&i!=max_p)
-			{
-				if (flag_b)
-					sorted_p[1] = p[i];
-				else
-					sorted_p[3] = p[i];
-				flag_b = false;
-			}
-		}
-		if(sorted_p[1].x<sorted_p[3].x)
-		{
-			POINT tmp = sorted_p[1];
-			sorted_p[1] = sorted_p[3];
-			sorted_p[3] = tmp;
-		}
-
-
-
-
 		int i, j;
 
 
@@ -429,13 +412,13 @@ while(1)
 #pragma omp parallel for
             for (j = miny; j < maxy; j++)
             {
-				float diff;
 				int color;
 				color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward,camera.forward);
 				if(color>=0)
                 {
 					*(buffer + j*WINDOW_WIDTH + i) = color;
                 }
+
             }
         }
     }
@@ -446,11 +429,23 @@ while(1)
     }
     else 
     {
+        QueryPerformanceCounter(&t2);
+
+        char tmp[100];
+        int frames = tf.QuadPart / (t2.QuadPart - t1.QuadPart);
+        sprintf(tmp, "FPS: %d\0", frames);
+        // 设置文字背景色
+        SetBkColor(Memhdc, RGB(0, 0, 0));
+        // 设置文字颜色
+        SetTextColor(Memhdc, RGB(255, 255, 255));
+        TextOut(Memhdc, 20, 550, tmp, strlen(tmp));
+
 		SelectObject(Memhdc, now_bitmap);
 		BitBlt(hDC, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Memhdc, 0, 0, SRCCOPY);
-		memset(buffer, 0x00, sizeof(int)*WINDOW_WIDTH*WINDOW_HEIGHT);
-		//QueryPerformanceCounter(&t2);
-		//printf("Lasting Time: %lf us\n", (1000000.0*t2.QuadPart - 1000000.0*t1.QuadPart) / tf.QuadPart);
+
+
+        memset(buffer, 0x00, sizeof(int)*WINDOW_WIDTH*WINDOW_HEIGHT);
+
     }
 }
     DeleteObject(Membitmap);

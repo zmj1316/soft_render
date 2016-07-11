@@ -21,7 +21,7 @@ public:
 			{
 				sum += vec[i] * vec[i];
 			}
-			mod_f = sqrt(sum);
+			mod_f = 1/sqrt(sum);
 			mod_valid = true;
 		}
 
@@ -31,7 +31,7 @@ public:
 	Vector4 normal()
 	{
 		mod();
-		return Vector4(vec[0] / mod_f, vec[1] / mod_f, vec[2] / mod_f, vec[3]);
+		return Vector4(vec[0] * mod_f, vec[1] * mod_f, vec[2] * mod_f, vec[3]);
 	}
 
     Vector4 operator - (const Vector4 & target){
