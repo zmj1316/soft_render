@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include   <string>   
 #include <vector>
@@ -13,19 +14,17 @@ using   namespace   std;
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
 
-unsigned int colors[] = { 0x00F0F0E0,0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF };
-unsigned char RGBs[] = { 0x1F,0x3F,0x5F,0x7F,0x9F,0xbF,0xdF,0xfF };
-char thread_count = 2;
+char map_name[] = "map.bmp";
 
+unsigned int colors[] = { 0x00F0F0E0,0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF };
+unsigned char RGBs[] = { 0x2F,0x3F,0x5F,0x7F,0x9F,0xbF,0xdF,0xfF };
+char thread_count = 4;
+static int frame_count = 1000;
+static int map_width = 0;
+static int map_height = 0;
 //----------函数声明---------------
 void init(HWND hWnd, HINSTANCE hInstance);
-//void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//画点,也就是像素输出
-//void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps);//----画矩形----
-//void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//填充矩形
-//void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//线框矩形
-//void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps);//三角形
-//void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps);//椭圆
-//void DrawContent(HWND hWnd);
+
 
 //-----回调函数-----------------
 LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
@@ -69,6 +68,36 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	return static_cast<int>(Msg.wParam);
 }
 
+unsigned char* readBMP(char* filename)
+{
+    int i;
+    FILE* f = fopen(filename, "rb");
+    if (f == NULL)
+        return NULL;
+    unsigned char info[54];
+    fread(info, sizeof(unsigned char), 54, f); // read the 54-byte header
+
+    // extract image height and width from header
+    int width = *(int*)&info[18];
+    int height = *(int*)&info[22];
+    map_width = width;
+    map_height = height;
+    int size = 3 * width * height;
+    unsigned char* data = new unsigned char[size]; // allocate 3 bytes per pixel
+    fread(data, sizeof(unsigned char), size, f); // read the rest of the data at once
+    fclose(f);
+
+    for (i = 0; i < size; i += 3)
+    {
+        unsigned char tmp = data[i];
+        data[i] = data[i + 2];
+        data[i + 2] = tmp;
+    }
+
+    return data;
+}
+
+
 void WT(Reactangular &r0)
 {
     // 世界变换
@@ -111,7 +140,6 @@ void VT(Reactangular& r, Transform t)
         dst[0] /= tan(3.14 / 6);
         dst[1] /= tan(3.14 / 6);
         dst[2] *= 0.9;
-        dst[2] -= 0;
         Vector4 t0 = r.vertexs_view[1] - r.vertexs_view[0];
         Vector4 t1 = r.vertexs_view[2] - r.vertexs_view[0];
         r.transform.forward = t0 / t1;
@@ -122,10 +150,8 @@ void get_Pt(POINT* Pt, Reactangular& r0)
 {
     for (size_t i = 0; i < 4; i++)
     {
-        Pt[i].x = 200 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
+        Pt[i].x = -100 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
         Pt[i].y = 200 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
-        //Pt[i].x = r0.vertexs[i].vec[0] * (50 / r0.vertexs[i].vec[2]);
-        //Pt[i].y = r0.vertexs[i].vec[1] * (50 / r0.vertexs[i].vec[2]);
     }
 }
 
@@ -147,46 +173,76 @@ int f(int a, int b, int x, int y, POINT p[])
 	//return (p[a].y - p[b].y)*x - (p[b].x - p[a].x)*y + p[a].x*p[b].y - p[b].x*p[a].y;
 }
 
-
-int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward)
+int do_RGB(int R, int G, int B)
 {
+    R = min(255, R);
+    G = min(255, G);
+    B = min(255, B);
+    return R << 16 | G << 8 | B;
+}
+
+int do_RGB(int color, float diff)
+{
+    return do_RGB((color >> 16) * diff, (color >> 8) * diff, color*diff);
+}
+
+int check_point(int x, int y, POINT p[], Vector4 * vecs,Vector4& light_spot,Vector4 & forward, Vector4 view_pos)
+{
+    static unsigned char * map = readBMP(map_name);
     float a = float(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
     float b = float(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
-	float c = float(f(0, 1, x, y, p)) / f(0, 1, p[2].x, p[2].y, p);
+	//float c = float(f(0, 1, x, y, p)) / f(0, 1, p[2].x, p[2].y, p);
+    float c = 1 - a - b;
     if (a >= 0 && a<=1 && b>=0 && b<=1 && c>=0 && c <= 1)
     {
 		Vector4 point = a*vecs[0] + b*vecs[1] + c*vecs[2];
 		Vector4 light = point - light_spot;
-		float diff = light.normal()*forward.normal();
-		Vector4 relfect = 2.0*diff * forward - light;
-		relfect = relfect.normal();
-		float spec = pow(max(0, relfect*point.normal()),2);
-		spec *= 1.3;
-		spec += 0.05;
-		return byte((spec)* (0xFF * b)) << 16 | byte((spec)* (0xFF * c)) << 8 | byte((spec)* (0xFF * a));
+        float diff = light.normal()*forward.normal();
+        diff = max(0, diff);
+        diff += 0.1;
+        Vector4 relfect = 2.0*diff * (forward.normal()) - light.normal();
+        relfect = relfect.normal();
+        double spec = pow(max(0, relfect*(point - view_pos).normal()), 200);
+        float zr = a / vecs[0].vec[2] + b / vecs[1].vec[2] + c / vecs[2].vec[2];
+        int u = ((a*(0 / vecs[2].vec[2]) + b*(0 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr) * map_width;
+        int v = ((a*(0 / vecs[2].vec[2]) + b*(1 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr) * map_height;
+        return do_RGB((diff)* (0xFF & ((map[(u + v*map_width) * 3]))) + ((spec)* (0xFF)),
+            (diff)* (0xFF & ((map[(u + v * map_width) * 3 + 1]))) + ((spec)* (0xFF)),
+            (diff)* (0xFF & ((map[(u + v * map_width) * 3 + 2]))) + ((spec)* (0xFF)));
 	}
 	else
     {
         a = float(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
         b = float(f(0, 2, x, y, p)) / f(0, 2, p[3].x, p[3].y, p);
-        c = float(f(2, 3, x, y, p)) / f(2, 3, p[0].x, p[0].y, p);
-        //c = 1 - a - b;
+        c = 1 - a - b;
         if (a >= 0 && a<=1 && b>=0 && b<=1 && c>=0 && c <= 1)
         {
 			Vector4 point = a*vecs[2] + b*vecs[3] + c*vecs[0];
 			Vector4 light = point - light_spot;
+
 			float diff = light.normal()*forward.normal();
-			Vector4 relfect = 2.0*diff * forward - light;
+            diff = max(0, diff);
+            diff += 0.1;
+			Vector4 relfect = 2.0*diff * (forward.normal()) - light.normal();
 			relfect = relfect.normal();
-			float spec = pow(max(0, relfect*point.normal()), 2);
-			spec *= 1.3;
-			spec += 0.05;
-			//if (diff < 0)
-			//	diff = -diff;
-			//return spec;
-			return byte((spec) * (0xFF*b)) << 16 | byte((spec) * (0xFF*a)) << 8 | byte((spec)* (0xFF*c));
+            float spec = pow(max(0, relfect*(point - view_pos).normal()), 256);
 
-
+            //float spec = max(0, relfect*(point - view_pos).normal());
+            ////float spec2 = spec;
+            //unsigned char *trick = (unsigned char *)&spec;
+            ////int exp = trick[7] & 0xEF << 4 | (trick[6] >> 4);
+            //spec = pow(spec, 200);
+            //exp = trick[7] & 0xEF << 4 | (trick[6] >> 4);
+            //int tmp0 = trick[7];
+            //int tmp1 = trick[6];
+            //trick[7] -=8;
+            //trick[7] &= 0xDF;
+            float zr = a / vecs[2].vec[2] + b / vecs[3].vec[2] + c / vecs[0].vec[2];
+            int u = ((a*(1 / vecs[2].vec[2]) + b*(1 / vecs[3].vec[2]) + c*(0 / vecs[0].vec[2])) / zr) * map_width;
+            int v = ((a*(1 / vecs[2].vec[2]) + b*(0 / vecs[3].vec[2]) + c*(0 / vecs[0].vec[2])) / zr) * map_height;
+            return do_RGB((diff)* (0xFF & ((map[(u + v * map_width) * 3]))) + ((spec)* (0xFF)),
+                (diff)* (0xFF & ((map[(u + v * map_width) * 3 + 1]))) + ((spec)* (0xFF)),
+                (diff)* (0xFF & ((map[(u + v * map_width) * 3 + 2]))) + ((spec)* (0xFF)));
         }
     }
 
@@ -259,14 +315,14 @@ while(1)
 	
 	//QueryPerformanceCounter(&t1);
 
-    camera.position = Vector4(5, -5, 40 + 2 * sin(3.14*count / 300), 1);
-	camera.forward = Vector4(0, -1 * cos(3.14*count / 300), -1 * sin(3.14*-count / 300), 0);
-	camera.up = Vector4(0, 1 * sin(-3.14*count / 300), -1 * cos(3.14*count / 300), 0);
+    camera.position = Vector4(-2 * cos(3.14*count / 500), -2 * cos(3.14*count / 500), 80 - 10 * sin(3.14*count / 500), 1);
+	camera.forward = Vector4(0, -1 * cos(3.14*count / 500), -1 * sin(3.14*-count / 500), 0);
+	camera.up = Vector4(0, 1 * sin(-3.14*count / 500), -1 * cos(3.14*count / 500), 0);
 	//camera.forward = Vector4(0, -0.7, -0.7, 0);
 	//camera.up = Vector4(0, 0.7, -0.7, 0);
 	camera.right = Vector4(-1, 0, 0, 0);
-	Vector4 light(30 - 5 * cos(3.14*count / 500), 20-5 * sin(3.14*count / 500), -100, 0);
-	transform(light.vec, light.vec, camera);
+	Vector4 light(100, 20, -20, 0);
+	//transform(light.vec, light.vec, camera);
 
 
 
@@ -307,13 +363,6 @@ while(1)
     {
         if (z.z < 0)
             break;
-        //SelectObject(Memhdc, burushed[z.i]);
-        //Polygon(Memhdc, Pt + 4 * z.i, 4);
-		//Vector4 directioin = light - reacs[z.i].transform.forward;
-		//float diff = light*reacs[z.i].transform.forward/(reacs[z.i].transform.forward.mod());
-		//if (diff > 0) diff = 0;
-		//else diff = -diff;
-		//diff += 0.2;
         POINT *p = Pt + 4 * z.i;
         int minx = 800, miny = 800, maxx = 0, maxy = 0;
 		// sort points
@@ -373,38 +422,30 @@ while(1)
 
 
 		int i, j;
+
+
         for (i = minx ; i < maxx; i++)
         {
-		#pragma omp parallel for
+#pragma omp parallel for
             for (j = miny; j < maxy; j++)
             {
 				float diff;
 				int color;
-				color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward);
-                //if ((diff = check_point(i, j, p,reacs[z.i].vertexs_view,light,reacs[z.i].transform.forward))>=0)
+				color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward,camera.forward);
 				if(color>=0)
                 {
-					//diff += 0.1;
-					//if (diff > 1) diff = 1;
-                    //SetPixel(Memhdc, i, j, RGB(223 * ((z.i & 4) >> 2) + 10, 223 * ((z.i & 2) >> 1) + 10, 223 * (z.i & 1) +10));
-					//*(buffer + j*WINDOW_WIDTH + i) = ((int(155 * ((z.i & 4) >> 2) * diff) << 16 | (int(155 * ((z.i & 2) >> 1) * diff) << 8) | (int(155 * (z.i & 1) * diff))));
-					//*(buffer + j*WINDOW_WIDTH + i) = byte(diff*RGBs[z.i + 1])<<16 | byte(diff*RGBs[z.i + 2])<<8 | byte(diff*RGBs[z.i - 3]);
 					*(buffer + j*WINDOW_WIDTH + i) = color;
                 }
             }
         }
     }
     count+=1;
-    if (count > 500)
+    if (count > frame_count)
     {
 		break;
     }
     else 
     {
-        //BitBlt(hDC, 0, 0, 800, 800, Memhdc, 0, 0, SRCCOPY);
-        //static auto white_brush = CreateSolidBrush(RGB(255, 255, 255));
-        //SelectObject(Memhdc, white_brush);
-        //Rectangle(Memhdc, 0, 0, 800, 800);
 		SelectObject(Memhdc, now_bitmap);
 		BitBlt(hDC, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Memhdc, 0, 0, SRCCOPY);
 		memset(buffer, 0x00, sizeof(int)*WINDOW_WIDTH*WINDOW_HEIGHT);
@@ -434,49 +475,6 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 	case WM_COMMAND:
 		HWND h;
 		h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("画点"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		pix(hWnd, hDC, NewBrush, Ps);
-	//		break;
-	//	}
-
-	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("矩形"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		rect(hWnd, hDC, NewBrush, Ps);
-	//		break;
-	//	}
-
-	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("填充矩形"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		fillrect(hWnd, hDC, NewBrush, r, Ps);
-	//		break;
-	//	}
-
-	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("线框矩形"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		linerect(hWnd, hDC, NewBrush, r, Ps);
-	//		break;
-	//	}
-
-	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("三角形"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		triangle(hWnd, hDC, NewBrush, Pt, Ps);
-	//		break;
-	//	}
-
-	//	h = FindWindowEx(hWnd, NULL, TEXT("BUTTON"), TEXT("椭圆"));
-	//	if (DWORD(lParam) == int(h))
-	//	{
-	//		ellipse(hWnd, hDC, NewBrush, r, Ps);
-	//		break;
-	//	}
-	//case WM_PAINT:
-	//	DrawContent(hWnd);//为什么加了这一句后开始按钮就会显示，而不加的话按钮需要重绘以后显示
-	//	break;
 
 	case WM_DESTROY:
 		PostQuitMessage(WM_QUIT);
@@ -486,122 +484,3 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 	}
 	return 0;
 }
-
-//
-//
-////画点
-//void pix(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_PAINT响应，但是WM_PAINT里面只有DrawContent(hWnd);
-//	//所以用getDC
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-//	//SelectObject(hDC, NewBrush);
-//	for (int x = 500; x<600; x++)//由于一个点太小了，所以这里花了100个点构成线段
-//		SetPixel(hDC, x, 50, RGB(255, 0, 0));
-//	//DeleteObject(NewBrush);
-//	//EndPaint(hWnd, &Ps);
-//	ReleaseDC(hWnd, hDC);
-//}
-////矩形
-//void rect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, PAINTSTRUCT &Ps)
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-//	SelectObject(hDC, NewBrush);
-//	Rectangle(hDC, 400, 400, 500, 500);
-//	DeleteObject(NewBrush);
-//	ReleaseDC(hWnd, hDC);
-//	//EndPaint(hWnd, &Ps);
-//}
-//
-////填充矩形
-//void fillrect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
-//	SelectObject(hDC, NewBrush);
-//	SetRect(&r, 200, 200, 250, 250);
-//	FillRect(hDC, &r, NewBrush);
-//	DeleteObject(NewBrush);
-//	//EndPaint(hWnd, &Ps);
-//	ReleaseDC(hWnd, hDC);
-//}
-//
-////线框矩形
-//void linerect(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(25, 25, 5));
-//	SelectObject(hDC, NewBrush);
-//	SetRect(&r, 250, 250, 400, 400);
-//	FrameRect(hDC, &r, NewBrush);
-//	DeleteObject(NewBrush);
-//	DeleteObject(NewBrush);
-//	//EndPaint(hWnd, &Ps);
-//	ReleaseDC(hWnd, hDC);
-//}
-////三角形
-//void triangle(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, POINT Pt[3], PAINTSTRUCT &Ps)
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(50, 50, 50));
-//	SelectObject(hDC, NewBrush);
-//	Pt[0].x = 425; Pt[0].y = 40;
-//	Pt[1].x = 395; Pt[1].y = 70;
-//	Pt[2].x = 455; Pt[2].y = 70;
-//	Polygon(hDC, Pt, 3);
-//	DeleteObject(NewBrush);
-//
-//	NewBrush = CreateSolidBrush(RGB(0, 255, 0));
-//	SelectObject(hDC, NewBrush);
-//	Pt[0].x = 365; Pt[0].y = 110;
-//	Pt[1].x = 395; Pt[1].y = 80;
-//	Pt[2].x = 395; Pt[2].y = 140;
-//	Polygon(hDC, Pt, 3);
-//	DeleteObject(NewBrush);
-//
-//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-//	SelectObject(hDC, NewBrush);
-//	Pt[0].x = 485; Pt[0].y = 110;
-//	Pt[1].x = 455; Pt[1].y = 80;
-//	Pt[2].x = 455; Pt[2].y = 140;
-//	Polygon(hDC, Pt, 3);
-//	DeleteObject(NewBrush);
-//
-//	NewBrush = CreateSolidBrush(RGB(0, 0, 255));
-//	SelectObject(hDC, NewBrush);
-//	Pt[0].x = 425; Pt[0].y = 180;
-//	Pt[1].x = 455; Pt[1].y = 150;
-//	Pt[2].x = 395; Pt[2].y = 150;
-//	Polygon(hDC, Pt, 3);
-//	DeleteObject(NewBrush);
-//	//EndPaint(hWnd, &Ps);
-//	ReleaseDC(hWnd, hDC);
-//}
-//
-////椭圆
-//void ellipse(HWND &hWnd, HDC &hDC, HBRUSH &NewBrush, RECT &r, PAINTSTRUCT &Ps)//椭圆
-//{
-//	//hDC = BeginPaint(hWnd, &Ps);
-//	hDC = GetDC(hWnd);
-//	NewBrush = CreateSolidBrush(RGB(255, 0, 0));
-//	SelectObject(hDC, NewBrush);
-//	Ellipse(hDC, 500, 500, 600, 600);
-//	DeleteObject(NewBrush);
-//	//EndPaint(hWnd, &Ps);
-//	ReleaseDC(hWnd, hDC);
-//}
-//
-//void DrawContent(HWND hWnd)
-//{
-//	HDC         hDC;
-//	PAINTSTRUCT Ps;
-//	hDC = BeginPaint(hWnd, &Ps);//用BeginPaint的话消息一定要WM_Paint响应
-//	EndPaint(hWnd, &Ps);
-//
-//}

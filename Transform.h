@@ -4,7 +4,7 @@
 #include "Vector4.h"
 #include "matrix.h"
 
-#define SIZE 10
+#define SIZE 30
 class Transform
 {
 public:
