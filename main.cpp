@@ -19,7 +19,7 @@ using namespace std;
 
 char thread_count = 4;				// openmp thread count
 
-char map_name[] = "map1.bmp";		// bitmap
+char map_name[] = "map4.bmp";		// bitmap
 static int sp_ = 2;					// specular
 static float delta = 1e-7;			// delta
 
@@ -38,6 +38,7 @@ float light_mod = 0;
 // double buffer
 unsigned int* buffer;
 
+static unsigned char* map;
 // timer
 LARGE_INTEGER t0, t1, t2, tf;
 // GDI
@@ -155,8 +156,8 @@ void get_Pt(POINT* Pt, Reactangular& r0)
 {
 	for (size_t i = 0; i < 4; i++)
 	{
-		Pt[i].x = -100 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
-		Pt[i].y = 200 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
+		Pt[i].x = WINDOW_WIDTH/2 + 10 * r0.vertexs_view[i].vec[0] * 50 / r0.vertexs_view[i].vec[2];
+		Pt[i].y = WINDOW_HEIGHT/2 - 10 * r0.vertexs_view[i].vec[1] * 50 / r0.vertexs_view[i].vec[2];
 	}
 }
 
@@ -188,8 +189,6 @@ static int f(int a, int b, int x, int y, POINT p[])
 // 由于直接传整个矩形进来，因此分割成两个三角形做
 int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vector4& forward, Vector4 view_pos)
 {
-	// 读图片
-	static unsigned char* map = readBMP(map_name);
 	// 颜色
 	unsigned char color[3];
 	// 重心坐标
@@ -205,8 +204,6 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 		// 光照
 		Vector4 light = point - light_spot;
 		// 用近似减少计算
-		if (light_mod == 0)
-			light_mod = light.mod();
 		// 漫反射
 		float diff = light * forward * light_mod * forward.mod();
 		diff = max(0, diff);
@@ -240,8 +237,6 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 		{
 			Vector4 point = a * vecs[2] + b * vecs[3] + c * vecs[0];
 			Vector4 light = point - light_spot;
-			if (light_mod == 0)
-				light_mod = light.mod();
 			float diff = light * forward * light_mod * forward.mod();
 			diff = max(0, diff);
 			diff += 0.1;
@@ -264,6 +259,7 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 
 void init(HWND hWnd, HINSTANCE hInstance)
 {
+	map = readBMP(map_name);
 	hDC = GetDC(hWnd);
 	Memhdc = CreateCompatibleDC(hDC);
 	Membitmap = CreateCompatibleBitmap(hDC, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -298,12 +294,13 @@ void init(HWND hWnd, HINSTANCE hInstance)
 	reacs[1].transform.up = Vector4(0, 0, 1, 0);
 	reacs[1].transform.right = Vector4(-1, 0, 0, 0);
 
+
 	reacs[2].transform.forward = Vector4(-1, 0, 0, 0);
 	reacs[2].transform.up = Vector4(0, 1, 0, 0);
 	reacs[2].transform.right = Vector4(0, 0, 1, 0);
 
-	reacs[3].transform.position.vec[1] += SIZE;
 	reacs[3].transform.position.vec[0] -= SIZE;
+	reacs[3].transform.position.vec[2] += SIZE;
 	reacs[3].transform.forward = Vector4(1, 0, 0, 0);
 	reacs[3].transform.up = Vector4(0, 1, 0, 0);
 	reacs[3].transform.right = Vector4(0, 0, -1, 0);
@@ -332,12 +329,12 @@ void GameLoop(HWND hwnd)
 	QueryPerformanceCounter(&t1);
 
 	// 摄像头
-	camera.position = Vector4(-3 - a_x, -4 + a_y, 80 - a_z, 1);
+	camera.position = Vector4(-80 - a_x, -4 + a_y, 100 - a_z, 1);
 	camera.forward = Vector4(0, -1 * cos(3.14 * a_rotate / 200), -1 * sin(3.14 * -a_rotate / 200), 0);
 	camera.up = Vector4(0, 1 * sin(-3.14 * a_rotate / 200), -1 * cos(3.14 * a_rotate / 200), 0);
 	camera.right = Vector4(-1, 0, 0, 0);
 	// 光照跟随摄像头
-	Vector4 light(100, 20, -20, 0);
+	Vector4 light(10, 20, -20, 0);
 	// 取消下面注释，光线在世界坐标
 	//transform(light.vec, light.vec, camera); 
 
@@ -382,6 +379,7 @@ void GameLoop(HWND hwnd)
 	     {
 		     return x.z > y.z;
 	     });
+	light_mod = light.mod();
 	for (Zbuffer z : bsort)
 	{
 		if (z.z < 0)
@@ -466,10 +464,10 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 			a_x--;
 			break;
 		case VK_UP:
-			a_z++;
+			a_y++;
 			break;
 		case VK_DOWN:
-			a_z--;
+			a_y--;
 			break;
 		case VK_F1:
 			a_rotate++;
@@ -477,9 +475,15 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 		case VK_F2:
 			a_rotate--;
 			break;
+		case VK_F3:
+			a_z--;
+			break;
+		case VK_F4:
+			a_z++;
+			break;
 		}
 		// 重新计算
-		light_mod = 0;
+		//light_mod = 0;
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(WM_QUIT);
