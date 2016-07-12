@@ -16,23 +16,18 @@ public:
 	{
 		if(!mod_valid)
 		{
-			float sum = 0;
-			for (size_t i = 0; i < 3; i++)
-			{
-				sum += vec[i] * vec[i];
-			}
-			mod_f = 1/sqrt(sum);
+			mod_f = 1 / sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 			mod_valid = true;
 		}
 
 		return mod_f;
 	}
 
-	Vector4 normal()
-	{
-		mod();
-		return Vector4(vec[0] * mod_f, vec[1] * mod_f, vec[2] * mod_f, vec[3]);
-	}
+	//Vector4 normal()
+	//{
+	//	mod();
+	//	return Vector4(vec[0] * mod_f, vec[1] * mod_f, vec[2] * mod_f, vec[3]);
+	//}
 
     Vector4 operator - (const Vector4 & target){
         return Vector4(vec[0] - target.vec[0], vec[1] - target.vec[1], vec[2] - target.vec[2], vec[3]);
@@ -47,6 +42,7 @@ public:
 	friend Vector4 operator *(float r, const Vector4 & m) {
 		return Vector4(r*m.vec[0], r*m.vec[1], r*m.vec[2], m.vec[3]);
 	}
+	// ²æ»ý
     Vector4 operator / (const Vector4 & target) const {
         return Vector4(
             vec[1] * target.vec[2] - vec[2] * target.vec[1],
@@ -60,5 +56,16 @@ public:
 		return Vector4(-vec[0], -vec[1], -vec[2], vec[3]);
 	}
 	float vec[4];
+	//bool r_valid = false;
+	//void do_r()
+	//{
+	//	if (!r_valid)
+	//	{
+	//		r_vec[0] = 1 / vec[0];
+	//		r_vec[1] = 1 / vec[1];
+	//		r_vec[2] = 1 / vec[2];
 
+	//	}
+	//}
+	//float r_vec[4];
 };

@@ -55,14 +55,4 @@ public:
     Vector4 vertexs_view[4];
 };
 
-class Cube
-{
-public:
-    Cube();
-    ~Cube();
-
-    Transform transform;
-    Vector4 vertexs[8];
-    Reactangular reactangular[6];
-};
 
