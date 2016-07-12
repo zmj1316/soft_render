@@ -1,5 +1,4 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include <dinput.h>
 
 #include <windows.h>
 #include <string>   
@@ -19,18 +18,18 @@ using namespace std;
 
 char thread_count = 4;				// openmp thread count
 
-char map_name[] = "map4.bmp";		// bitmap
+char map_name[] = "map1.bmp";		// bitmap
 static int sp_ = 2;					// specular
-static float delta = 1e-7;			// delta
+static float delta = 1e-4;			// delta
 
 int map_width = -1;			//	size of bitmap
 int map_height = -1;
 
 // 控制姿态
-int a_rotate = 0;
-int a_x = 0;
-int a_y = 0;
-int a_z = 0;
+int a_rotate = 70;
+int a_x = -10;
+int a_y = 1;
+int a_z = 27;
 
 // hack
 float light_mod = 0;
@@ -93,8 +92,8 @@ void getBilinearFilteredPixelColor(unsigned char tex[], double u, double v,unsig
 {
 	u *= map_width;
 	v *= map_height;
-	int x = floor(u);
-	int y = floor(v);
+	int x = u;
+	int y = v;
 	double u_ratio = u - x;
 	double v_ratio = v - y;
 	double u_opposite = 1 - u_ratio;
@@ -103,6 +102,9 @@ void getBilinearFilteredPixelColor(unsigned char tex[], double u, double v,unsig
 	y = min(y, map_height-2);
 	x = max(0, x);
 	y = max(0, y);
+	//res[0] = tex[(x + y*map_height) * 3];
+	//res[1] = tex[(x + y*map_height) * 3 + 1];
+	//res[2] = tex[(x + y*map_height) * 3 + 2];
 	res[0] = (tex[(x + y*map_height) * 3] * u_opposite + tex[(x + 1 + y*map_height) * 3] * u_ratio) * v_opposite + (tex[(x + (y + 1)*map_height) * 3] * u_opposite + tex[(x + 1 + (y + 1)*map_height) * 3] * u_ratio) * v_ratio;
 	res[1] = (tex[(x + y*map_height) * 3 + 1] * u_opposite + tex[(x + 1 + y*map_height) * 3 + 1] * u_ratio) * v_opposite + (tex[(x + (y + 1)*map_height) * 3 + 1] * u_opposite + tex[(x + 1 + (y + 1)*map_height) * 3 + 1] * u_ratio) * v_ratio;
 	res[2] = (tex[(x + y*map_height) * 3 + 2] * u_opposite + tex[(x + 1 + y*map_height) * 3 + 2] * u_ratio) * v_opposite + (tex[(x + (y + 1)*map_height) * 3 + 2] * u_opposite + tex[(x + 1 + (y + 1)*map_height) * 3 + 2] * u_ratio) * v_ratio;
@@ -141,9 +143,9 @@ void VT(Reactangular& r, Transform t)
 		float* dst = r.vertexs_view[i].vec;
 		transform(vec, dst, t);
 		// 透视视角 参数待修改
-		dst[0] /= tan(3.14 / 6);
-		dst[1] /= tan(3.14 / 6);
-		dst[2] *= 0.9;
+		dst[0] /= tan(3.14 / 4);
+		dst[1] /= tan(3.14 / 4);
+		dst[2] *= 0.8;
 		// 叉积求法向
 		Vector4 t0 = r.vertexs_view[1] - r.vertexs_view[0];
 		Vector4 t1 = r.vertexs_view[2] - r.vertexs_view[0];
@@ -192,12 +194,12 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 	// 颜色
 	unsigned char color[3];
 	// 重心坐标
-	float a = float(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
-	float b = float(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
+	double a = double(f(1, 2, x, y, p)) / f(1, 2, p[0].x, p[0].y, p);
+	double b = double(f(2, 0, x, y, p)) / f(2, 0, p[1].x, p[1].y, p);
 	//float c = float(f(0, 1, x, y, p)) / f(0, 1, p[2].x, p[2].y, p);
-	float c = 1 - a - b;
+	double c = 1 - a - b;
 	// 判断是否在内部
-	if (a >= 0 - delta && a <= 1 + delta && b >= 0 - delta && b <= 1 + delta && c >= 0 - delta && c <= 1 + delta)
+	if (a >= 0 - delta&& a <= 1 + delta && b >= 0 - delta && b <= 1 + delta && c >= 0 - delta&& c <= 1 + delta)
 	{
 		// 点的坐标
 		Vector4 point = a * vecs[0] + b * vecs[1] + c * vecs[2];
@@ -205,7 +207,7 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 		Vector4 light = point - light_spot;
 		// 用近似减少计算
 		// 漫反射
-		float diff = light * forward * light_mod * forward.mod();
+		volatile float diff = light * forward * light_mod * forward.mod();
 		diff = max(0, diff);
 		// 全局光
 		diff += 0.1;
@@ -230,10 +232,10 @@ int check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, Vec
 	// 对另外一个三角形做同样处理
 	else
 	{
-		a = float(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
-		b = float(f(0, 2, x, y, p)) / f(0, 2, p[3].x, p[3].y, p);
+		a = double(f(3, 0, x, y, p)) / f(3, 0, p[2].x, p[2].y, p);
+		b = double(f(0, 2, x, y, p)) / f(0, 2, p[3].x, p[3].y, p);
 		c = 1 - a - b;
-		if (a >= 0 - delta && a <= 1 + delta && b >= 0 - delta && b <= 1 + delta && c >= 0 - delta && c <= 1 + delta)
+		if (a >= 0 - delta&& a <= 1 + delta && b >= 0 - delta && b <= 1 + delta && c >= 0 - delta&& c <= 1 + delta)
 		{
 			Vector4 point = a * vecs[2] + b * vecs[3] + c * vecs[0];
 			Vector4 light = point - light_spot;
@@ -329,12 +331,15 @@ void GameLoop(HWND hwnd)
 	QueryPerformanceCounter(&t1);
 
 	// 摄像头
-	camera.position = Vector4(-80 - a_x, -4 + a_y, 100 - a_z, 1);
-	camera.forward = Vector4(0, -1 * cos(3.14 * a_rotate / 200), -1 * sin(3.14 * -a_rotate / 200), 0);
-	camera.up = Vector4(0, 1 * sin(-3.14 * a_rotate / 200), -1 * cos(3.14 * a_rotate / 200), 0);
+	camera.position = Vector4( -30- a_x, -4 + a_y, 50 - a_z, 1);
+	camera.forward = Vector4(0, -1 * cos(3.14 * a_rotate / 100), -1 * sin(3.14 * -a_rotate / 100), 0);
+	camera.up = Vector4(0, 1 * sin(-3.14 * a_rotate / 100), -1 * cos(3.14 * a_rotate / 100), 0);
 	camera.right = Vector4(-1, 0, 0, 0);
+	//camera.forward = Vector4(0, 0, -1, 0);
+	//camera.up = Vector4(0, 1, 0, 0);
+	//camera.right = Vector4(-1, 0, 0, 0);
 	// 光照跟随摄像头
-	Vector4 light(10, 20, -20, 0);
+	Vector4 light(10, 0, -200, 0);
 	// 取消下面注释，光线在世界坐标
 	//transform(light.vec, light.vec, camera); 
 
@@ -345,6 +350,16 @@ void GameLoop(HWND hwnd)
 		WT(reacs[i]);
 		// 视角坐标
 		VT(reacs[i], camera);
+		//几个点顺序反了
+		if (i != 0 && i != 5)
+		{
+			Vector4 tmp = reacs[i].vertexs_view[1];
+			reacs[i].vertexs_view[1] = reacs[i].vertexs_view[3];
+			reacs[i].vertexs_view[3] = tmp;
+			tmp = reacs[i].vertexs_world[1];
+			reacs[i].vertexs_world[1] = reacs[i].vertexs_world[3];
+			reacs[i].vertexs_world[3] = tmp;
+		}
 		// 顶点投影
 		get_Pt(Pt + 4 * i, reacs[i]);
 		// 两个面法向反了
@@ -386,6 +401,8 @@ void GameLoop(HWND hwnd)
 			break;
 		POINT* p = Pt + 4 * z.i;
 		int minx = WINDOW_WIDTH, miny = WINDOW_HEIGHT, maxx = 0, maxy = 0;
+		POINT p2[4];
+
 
 		// 计算包裹了投影四边形的矩形
 		for (int i = 0; i < 4; ++i)
@@ -408,7 +425,7 @@ void GameLoop(HWND hwnd)
 			#pragma omp parallel for
 			for (j = miny; j < maxy; j++)
 			{
-				int color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward, camera.forward);
+				volatile int color = check_point(i, j, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward, camera.forward);
 				if (color >= 0)
 				{
 					*(buffer + j * WINDOW_WIDTH + i) = color;
