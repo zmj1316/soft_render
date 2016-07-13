@@ -229,15 +229,16 @@ float check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, V
 	//float t1 = f(1, 2, x, y, p);
 	//float t2 = f(1, 2, x0, y0, p);
 	//float a = f(1, 2, x, y, p) / f(1, 2, p[0].x, p[0].y, p);
-	float a = f(1, 2, x, y, p) / f(1, 2, p[0].x, p[0].y, p);
-	float b = f(2, 0, x, y, p) / f(2, 0, p[1].x, p[1].y, p);
-	float c = f(0, 1, x, y, p) / f(0, 1, p[2].x, p[2].y, p);
+	float ss[3];
+	ss[0] = f(1, 2, x, y, p) / f(1, 2, p[0].x, p[0].y, p);
+	ss[1] = f(2, 0, x, y, p) / f(2, 0, p[1].x, p[1].y, p);
+	ss[2] = 1 - ss[0] - ss[1];
 	//float c = 1 - a - b;
 	// 判断是否在内部
-	if (fast_judge(&a) && fast_judge(&b) && fast_judge(&c))
+	if (fast_judge(ss) && fast_judge(&ss[1]) && fast_judge(&ss[2]))
 	{
 		// 点的坐标
-		Vector4 point = a * vecs[0] + b * vecs[1] + c * vecs[2];
+		Vector4 point = ss[0] * vecs[0] + ss[1] * vecs[1] + ss[2] * vecs[2];
 		// 光照
 		Vector4 light = point - light_spot;
 		// 用近似减少计算
@@ -256,9 +257,9 @@ float check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, V
 		float spec = my_pow(max(0, reflect*view_dir*view_dir.mod()*reflect.mod()), sp_);
 		//min(spec, 1e10);
 		// 透视矫正
-		float zr = a / vecs[0].vec[2] + b / vecs[1].vec[2] + c / vecs[2].vec[2];
-		float u = ((a*(0 / vecs[2].vec[2]) + b*(0 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr);
-		float v = ((a*(0 / vecs[2].vec[2]) + b*(1 / vecs[1].vec[2]) + c*(1 / vecs[2].vec[2])) / zr);
+		float zr = ss[0] / vecs[0].vec[2] + ss[1] / vecs[1].vec[2] + ss[2]/ vecs[2].vec[2];
+		float u = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (0 / vecs[1].vec[2]) + ss[2]*(1 / vecs[2].vec[2])) / zr);
+		float v = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (1 / vecs[1].vec[2]) + ss[2]*(1 / vecs[2].vec[2])) / zr);
 
 		// 纹理过滤
 		getBilinearFilteredPixelColor(map, u, v,color);
@@ -269,12 +270,12 @@ float check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, V
 	// 对另外一个三角形做同样处理
 	else
 	{
-		a = f(3, 0, x, y, p) / f(3, 0, p[2].x, p[2].y, p);
-		b = f(0, 2, x, y, p) / f(0, 2, p[3].x, p[3].y, p);
-		c = 1 - a - b;
-		if (fast_judge(&a) && fast_judge(&b) && fast_judge(&c))
+		ss[0]= f(3, 0, x, y, p) / f(3, 0, p[2].x, p[2].y, p);
+		ss[1]= f(0, 2, x, y, p) / f(0, 2, p[3].x, p[3].y, p);
+		ss[2] = 1 - ss[0] - ss[1];
+		if (fast_judge(ss) && fast_judge(&ss[1]) && fast_judge(&ss[2]))
 		{
-			Vector4 point = a * vecs[2] + b * vecs[3] + c * vecs[0];
+			Vector4 point = ss[0] * vecs[2] + ss[1] * vecs[3] + ss[2]*vecs[0];
 			Vector4 light = point - light_spot;
 			float diff = light * forward * light_mod;
 			diff = max(0, diff);
@@ -286,9 +287,9 @@ float check_point(int x, int y, POINT p[], Vector4* vecs, Vector4& light_spot, V
 			float spec = my_pow(max(0, reflect*view_dir*view_dir.mod()*reflect.mod()), sp_);
 			//min(spec, 1e10);
 
-			float zr = a / vecs[2].vec[2] + b / vecs[3].vec[2] + c / vecs[0].vec[2];
-			float u = ((a*(1 / vecs[2].vec[2]) + b*(1 / vecs[3].vec[2]) + c*(0 / vecs[0].vec[2])) / zr);
-			float v = ((a*(1 / vecs[2].vec[2]) + b*(0 / vecs[3].vec[2]) + c*(0 / vecs[0].vec[2])) / zr);
+			float zr = ss[0] / vecs[2].vec[2] + ss[1] / vecs[3].vec[2] + ss[2]/ vecs[0].vec[2];
+			float u = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (1 / vecs[3].vec[2]) + ss[2]*(0 / vecs[0].vec[2])) / zr);
+			float v = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (0 / vecs[3].vec[2]) + ss[2]*(0 / vecs[0].vec[2])) / zr);
 			//u = min(0.999, u);
 			//u = max(0.001, u);
 			//v = min(0.999, v);
