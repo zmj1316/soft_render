@@ -10,7 +10,7 @@ public:
         vertexs[1] = Vector4(SIZE, 0, 0, 1);
         vertexs[2] = Vector4(SIZE, SIZE, 0, 1);
         vertexs[3] = Vector4(0, SIZE, 0, 1);
-        transform.position = Vector4(-SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
+        transform.position = Vector4(SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
         //transform.position = Vector4(0,0,0, 1);
     }
     Vector4 get_center()

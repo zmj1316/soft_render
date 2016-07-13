@@ -23,17 +23,23 @@ public:
 		return mod_f;
 	}
 
-	//Vector4 normal()
-	//{
-	//	mod();
-	//	return Vector4(vec[0] * mod_f, vec[1] * mod_f, vec[2] * mod_f, vec[3]);
-	//}
+	Vector4 normal()
+	{
+		mod();
+		return Vector4(vec[0] * mod_f, vec[1] * mod_f, vec[2] * mod_f, vec[3]);
+	}
 
     Vector4 operator - (const Vector4 & target){
         return Vector4(vec[0] - target.vec[0], vec[1] - target.vec[1], vec[2] - target.vec[2], vec[3]);
     }
-	Vector4 operator + (const Vector4 & target) {
-		return Vector4(vec[0] + target.vec[0], vec[1] + target.vec[1], vec[2] + target.vec[2], vec[3]);
+	Vector4 operator + (const Vector4 & target) const
+	{
+		Vector4 res;
+		res.vec[0] = vec[0] + target.vec[0];
+		res.vec[1] = vec[1] + target.vec[1];
+		res.vec[2] = vec[2] + target.vec[2];
+		res.vec[3] = vec[3] + target.vec[3];
+		return res;
 	}
     float operator * (const Vector4 & target) const{
         return vec[0] * target.vec[0] + vec[1] * target.vec[1] + vec[2] * target.vec[2];

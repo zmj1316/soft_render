@@ -3,7 +3,7 @@
 #define TRANSFORM_H
 #include "Vector4.h"
 
-#define SIZE 30
+#define SIZE 20
 class Transform
 {
 public:
