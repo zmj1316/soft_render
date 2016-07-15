@@ -1,7 +1,7 @@
 #pragma once
 #include "Transform.h"
 
-class Reactangular
+struct Reactangular
 {
 public:
     Reactangular()
@@ -10,7 +10,7 @@ public:
         vertexs[1] = Vector4(SIZE, 0, 0, 1);
         vertexs[2] = Vector4(SIZE, SIZE, 0, 1);
         vertexs[3] = Vector4(0, SIZE, 0, 1);
-        transform.position = Vector4(SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
+        transform.position = Vector4(-SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
         //transform.position = Vector4(0,0,0, 1);
     }
     Vector4 get_center()
@@ -21,7 +21,7 @@ public:
             float sum = 0;
             for (int j = 0; j < 4; ++j)
             {
-                sum += vertexs_world[j].vec[i];
+                sum += vertexs_view[j].vec[i];
             }
             res.vec[i] = sum / 4;
         }
@@ -52,7 +52,8 @@ public:
     Transform transform;
     Vector4 vertexs[4];
     Vector4 vertexs_world[4];
-    Vector4 vertexs_view[4];
+	Vector4 vertexs_view[4];
+	Vector4 vertexs_sc[4];
 };
 
 

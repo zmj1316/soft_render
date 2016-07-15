@@ -1,5 +1,5 @@
 #pragma once
-class Zbuffer
+struct Zbuffer
 {
 public:
     int x, y;

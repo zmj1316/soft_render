@@ -10,7 +10,7 @@ Transform::Transform()
 }
 
 
-Transform::Transform(Vector4 position)
+Transform::Transform(Vector4& position)
 {
     this->position = position;
     Transform();
