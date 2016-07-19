@@ -1,5 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
-
+#define EIGEN_NO_DEBUG 
 #include <windows.h>
 #include <string>   
 #include <vector>
@@ -11,21 +11,26 @@ using namespace std;
 #include "Zbuffer.h"
 #include <math.h>
 #include <omp.h>
-#include "matrix.h"
+#include <Eigen/Dense>
+#include <Eigen/Core>
+
 //参数
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
-char thread_count = 32; // openmp thread count
+//int macro_size = 16;
+//byte thread_count_b = 4; // openmp thread count
 
-float far_z = 1000;
-float near_z = 0.05;
-char map_name[] = "map1.bmp"; // bitmap
-static int sp_ = 6; // specular 2^6=64
-static float delta = 1e-5; // delta
-int map_width = -1; //	size of bitmap
-int map_height = -1;
+float z_far_f = 1000;
+float z_near_f = 0.1;
+char map_name_str[] = "map1.bmp"; // bitmap
+static int specular_i = 6; // specular 2^6=64
+static float delta_f = 1e-5; // delta
+int map_width_i = -1; //	size of bitmap
+int map_height_i = -1;
 
+// 视角
+const float cot_f = 3;
 // 控制姿态
 int a_dep = 0;
 int a_x = 0;
@@ -38,7 +43,7 @@ float light_mod = 0;
 // float buffer
 unsigned int* buffer;
 
-static float* map;
+float* __map_data;
 // timer
 LARGE_INTEGER t0, t1, t2, tf;
 // GDI
@@ -66,7 +71,7 @@ void init(HWND hWnd, HINSTANCE hInstance);
 LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
 // read bitmap
-// 没有处理对齐所以需要4的整数倍
+// 没有处理对齐所以图片分辨率需要4的整数倍
 float* readBMP(char* filename)
 {
 	int i;
@@ -79,8 +84,8 @@ float* readBMP(char* filename)
 	// extract image height and width from header
 	int width = *(int*)&info[18];
 	int height = *(int*)&info[22];
-	map_width = width;
-	map_height = height;
+	map_width_i = width;
+	map_height_i = height;
 	int size = 3 * width * height;
 	unsigned char* data = new unsigned char[size]; // allocate 3 bytes per pixel
 	float* data_f = new float[size * 3];
@@ -100,6 +105,7 @@ float* readBMP(char* filename)
 	return data_f;
 }
 
+
 // from tutorial
 // 因为是按字节分的所以修改了
 #define u_opposite u_f[0]
@@ -107,10 +113,10 @@ float* readBMP(char* filename)
 #define v_opposite u_f[2]
 #define v_ratio u_f[3]
 
-void getBilinearFilteredPixelColor(float tex[], float u, float v, float res[])
+void getBilinearFilteredPixelColor(float* tex, float u, float v, float res[])
 {
-	u *= map_width;
-	v *= map_height;
+	u *= map_width_i - 1;
+	v *= map_height_i - 1;
 	int x = u;
 	int y = v;
 	float u_f[4];
@@ -120,78 +126,46 @@ void getBilinearFilteredPixelColor(float tex[], float u, float v, float res[])
 	v_opposite = 1 - v_ratio;
 	x = max(0, x);
 	y = max(0, y);
-	x = min(x, map_width-1);
-	y = min(y, map_height-1);
+	x = min(x, map_width_i-1);
+	y = min(y, map_height_i-1);
 	int x_d, y_d;
-	x_d = min(x + 1, map_width - 1);
-	y_d = min(y + 1, map_height - 1);
+	x_d = min(x + 1, map_width_i - 1);
+	y_d = min(y + 1, map_height_i - 1);
 
-	res[0] = (tex[(x + y * map_height) * 3] * u_opposite + tex[(x_d + y * map_height) * 3] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height) * 3] * u_opposite + tex[(x_d + (y_d) * map_height) * 3] * u_ratio) * v_ratio;
-	res[1] = (tex[(x + y * map_height) * 3 + 1] * u_opposite + tex[(x_d + y * map_height) * 3 + 1] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height) * 3 + 1] * u_opposite + tex[(x_d + (y_d) * map_height) * 3 + 1] * u_ratio) * v_ratio;
-	res[2] = (tex[(x + y * map_height) * 3 + 2] * u_opposite + tex[(x_d + y * map_height) * 3 + 2] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height) * 3 + 2] * u_opposite + tex[(x_d + (y_d) * map_height) * 3 + 2] * u_ratio) * v_ratio;
-	//res[0] = tex[(x + y*map_height) * 3];
-	//res[1] = tex[(x + y*map_height) * 3 + 1];
-	//res[2] = tex[(x + y*map_height) * 3 + 2];
+	res[0] = (tex[(x + y * map_height_i) * 3] * u_opposite + tex[(x_d + y * map_height_i) * 3] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height_i) * 3] * u_opposite + tex[(x_d + (y_d) * map_height_i) * 3] * u_ratio) * v_ratio;
+	res[1] = (tex[(x + y * map_height_i) * 3 + 1] * u_opposite + tex[(x_d + y * map_height_i) * 3 + 1] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height_i) * 3 + 1] * u_opposite + tex[(x_d + (y_d) * map_height_i) * 3 + 1] * u_ratio) * v_ratio;
+	res[2] = (tex[(x + y * map_height_i) * 3 + 2] * u_opposite + tex[(x_d + y * map_height_i) * 3 + 2] * u_ratio) * v_opposite + (tex[(x + (y_d) * map_height_i) * 3 + 2] * u_opposite + tex[(x_d + (y_d) * map_height_i) * 3 + 2] * u_ratio) * v_ratio;
 }
-
-#define _trans(new_vec,i) 	new_vec[i] = t.right.vec[i] * vec_src[0]\
-							+ t.up.vec[i] * vec_src[1]\
-							+ t.forward.vec[i] * vec_src[2]\
-							+ t.position.vec[i] * vec_src[3]
 
 // 变换坐标
 
-void transform(float* vec_src, float* vec_dst, Transform& t)
-{
-	float new_vec[4];
-	for (int i = 0; i < 4; i++)
-	{
-		new_vec[i] = t.right.vec[i] * vec_src[0]
-			+ t.up.vec[i] * vec_src[1]
-			+ t.forward.vec[i] * vec_src[2]
-			+ t.position.vec[i] * vec_src[3];
-	}
-	memcpy(vec_dst, new_vec, 4 * sizeof(float));
-}
-
 void transform_2(float* vec_src, float* vec_dst, Transform& t)
 {
-	float new_vec[4];
+	float new_vec[3];
 
-	new_vec[0] = vec_src[0] * t.right.vec[0]
-		+ vec_src[1] * t.right.vec[1]
-		+ vec_src[2] * t.right.vec[2]
-		- (t.position * t.right);
-	new_vec[1] = vec_src[0] * t.up.vec[0]
-		+ vec_src[1] * t.up.vec[1]
-		+ vec_src[2] * t.up.vec[2]
-		- (t.position * t.up);
-	new_vec[2] = vec_src[0] * t.forward.vec[0]
-		+ vec_src[1] * t.forward.vec[1]
-		+ vec_src[2] * t.forward.vec[2]
-		- (t.position * t.forward);
-	new_vec[3] = 1;
+	new_vec[0] = vec_src[0] * t.right.data()[0]
+		+ vec_src[1] * t.right.data()[1]
+		+ vec_src[2] * t.right.data()[2]
+		- (t.position.dot(t.right));
+	new_vec[1] = vec_src[0] * t.up.data()[0]
+		+ vec_src[1] * t.up.data()[1]
+		+ vec_src[2] * t.up.data()[2]
+		- (t.position.dot(t.up));
+	new_vec[2] = vec_src[0] * t.forward.data()[0]
+		+ vec_src[1] * t.forward.data()[1]
+		+ vec_src[2] * t.forward.data()[2]
+		- (t.position.dot(t.forward));
 
-	memcpy(vec_dst, new_vec, 4 * sizeof(float));
+	memcpy(vec_dst, new_vec, 3 * sizeof(float));
 }
-
-//// 世界变换
-//void WT(Reactangular& r0)
-//{
-//	for (int i = 0; i < 4; i++)
-//	{
-//		float* vec = r0.vertexs[i].vec;
-//		transform_2(vec, r0.vertexs_world[i].vec, r0.transform);
-//	}
-//}
 
 // 视角变换
 void VT(Reactangular& r, Transform& t)
 {
 	for (int i = 0; i < 4; i++)
 	{
-		float* vec = r.vertexs_world[i].vec;
-		float* dst = r.vertexs_view[i].vec;
+		float* vec = r.vertexs_world[i].data();
+		float* dst = r.vertexs_view[i].data();
 		transform_2(vec, dst, t);
 	}
 }
@@ -200,29 +174,26 @@ void VT(Reactangular& r, Transform& t)
 void get_Pt(Reactangular& r)
 {
 	//float tmp[4];
-	float cot = 1.0 / tan(3.14 / 6);
 	for (int i = 0; i < 4; i++)
 	{
-		r.vertexs_sc[i].vec[0] = r.vertexs_view[i].vec[0] * cot * WINDOW_HEIGHT / WINDOW_WIDTH;
-		r.vertexs_sc[i].vec[1] = r.vertexs_view[i].vec[1] * cot;
-		r.vertexs_sc[i].vec[2] = r.vertexs_view[i].vec[2] * (far_z / (far_z - near_z)) - far_z * near_z / (far_z - near_z);
-		r.vertexs_sc[i].vec[3] = r.vertexs_view[i].vec[2];
-
-		r.vertexs_sc[i].vec[0] /= r.vertexs_sc[i].vec[3];
-		r.vertexs_sc[i].vec[1] /= r.vertexs_sc[i].vec[3];
-		r.vertexs_sc[i].vec[2] /= r.vertexs_sc[i].vec[3];
-
-		//Pt[i].x = WINDOW_WIDTH*(r0.vertexs_view[i].vec[0] * (3/4) / r0.vertexs_view[i].vec[2] + 1) / 2;
-		//Pt[i].y = WINDOW_HEIGHT*(r0.vertexs_view[i].vec[1] / r0.vertexs_view[i].vec[2] + 1 ) /2 ;
+		r.vertexs_sc[i].data()[0] = r.vertexs_view[i].data()[0] * cot_f * WINDOW_HEIGHT / WINDOW_WIDTH;
+		r.vertexs_sc[i].data()[1] = r.vertexs_view[i].data()[1] * cot_f;
+		r.vertexs_sc[i].data()[2] = r.vertexs_view[i].data()[2] * (z_far_f / (z_far_f - z_near_f)) - z_far_f * z_near_f / (z_far_f - z_near_f);
+		r.vertexs_sc[i].data()[3] = r.vertexs_view[i].data()[2];
+		r.vertexs_sc[i].data()[0] /= r.vertexs_sc[i].data()[3];
+		r.vertexs_sc[i].data()[1] /= r.vertexs_sc[i].data()[3];
+		r.vertexs_sc[i].data()[2] /= r.vertexs_sc[i].data()[3];
 	}
 	// 叉积求法向
-	Vector4 t0 = r.vertexs_sc[1] - r.vertexs_sc[0];
-	Vector4 t1 = r.vertexs_sc[2] - r.vertexs_sc[0];
-	r.transform.forward = (t1 / t0).normal();
+	Eigen::Vector3f t0 = r.vertexs_sc[1] - r.vertexs_sc[0];
+	Eigen::Vector3f t1 = r.vertexs_sc[2] - r.vertexs_sc[0];
+	//r.transform.forward = (t1 * t0).normalized();
+	Vector4::mul(t1.data(), t0.data(), r.transform.forward.data());
+	r.transform.forward = r.transform.forward.normalized();
 }
 
 // RGB 运算
-int do_RGB(float Rd, float Gd, float Bd)
+inline int do_RGB(float Rd, float Gd, float Bd)
 {
 	int R = min(255, Rd);
 	int G = min(255, Gd);
@@ -231,7 +202,7 @@ int do_RGB(float Rd, float Gd, float Bd)
 }
 
 // 简化幂运算
-float my_pow(float a, int n)
+inline float my_pow(float a, int n)
 {
 	for (size_t i = 0; i < n; i++)
 	{
@@ -240,14 +211,14 @@ float my_pow(float a, int n)
 	return a;
 }
 
-double f(const int a, const int b, const int x, const int y, const mPOINT p[])
+inline double f(const int a, const int b, const int x, const int y, const mPOINT p[])
 {
 	return (p[a].y - p[b].y) * (x - p[b].x) + (p[b].x - p[a].x) * (y - p[b].y);
 }
 
 //#define f(a,b,xx,yy,p) (float)(((p[a].y - p[b].y) * (xx - p[b].x) + (p[b].x - p[a].x) * (yy - p[b].y)))
 
-bool fast_judge(const double* const a)
+bool fast_judge(const float* const a)
 {
 	//byte *t = (byte*)a;
 	//if ((t[7] & 0x80) == 0x80) return false;
@@ -257,14 +228,14 @@ bool fast_judge(const double* const a)
 	return (*a > -1e-3);
 }
 
-float get_light(double ss[], Vector4 vecs[], Vector4& light_spot, Vector4& forward, Vector4& view_pos, int type)
+float get_light(float ss[], Eigen::Vector3f vecs[], Eigen::Vector3f& light_spot, Eigen::Vector3f& forward, Eigen::Vector3f& view_pos, int type)
 {
-	Vector4 point;
+	Eigen::Vector3f point;
 	// 光照
-	Vector4 light;
+	Eigen::Vector3f light;
 	// 漫反射
-	Vector4 reflect;
-	Vector4 view_dir;
+	Eigen::Vector3f reflect;
+	Eigen::Vector3f view_dir;
 	float diff;
 	float spec;
 	float zr;
@@ -276,47 +247,42 @@ float get_light(double ss[], Vector4 vecs[], Vector4& light_spot, Vector4& forwa
 	// 点的坐标
 	if (type == 0)
 		point = ss[0] * vecs[0] + ss[1] * vecs[1] + ss[2] * vecs[2];
+	// 尝试 amp 
+	//Vector4::vecAdd(ss, vecs[0].data(), vecs[1].data(), vecs[2].data(),point.data(),3);
 	else
 		point = ss[0] * vecs[2] + ss[1] * vecs[3] + ss[2] * vecs[0];
+	//Vector4::vecAdd(ss, vecs[2].data(), vecs[3].data(), vecs[0].data(), point.data(), 3);
+
 
 	// 光照
 	light = point - light_spot;
 	// 漫反射
-	diff = light * forward * light_mod;
-	diff = max(0, diff);
-	// 全局光
-	//diff += 0.1;
+	diff = light.normalized().dot(forward);
 	// 反射
-	// mod()为取长度倒数
-	//reflect = 2.0 * diff * (forward)-light_mod * light;
-	__m128 reflect_m = Vector4::sub(2.0 * diff * (forward), light_mod * light);
-	//if (reflect_mod == 0)
-	//reflect_mod = reflect.mod();
+	//reflect = 2.0 * diff * (forward)-light_mod*light;
+	reflect = 2.0 * diff * (forward)-light.normalized();
 	// 视角方向
 	view_dir = point - view_pos;
-	__m128 viewdir_m = Vector4::sub(point, view_pos);
-	spec = 0;
-	//if (diff > 0.4)
-	//if (diff < 0.2) return -1;
-	spec = my_pow(max(0, Vector4::mul(reflect_m,viewdir_m) / (Vector4::mod(reflect_m)* Vector4::mod(viewdir_m))), sp_);
-	//min(spec, 1e10);
+	float tmp2 = reflect.normalized().dot(view_dir.normalized());
+
+	spec = my_pow(tmp2, specular_i);
 	// 透视矫正
 	if (type == 0)
 	{
-		zr = ss[0] / vecs[0].vec[2] + ss[1] / vecs[1].vec[2] + ss[2] / vecs[2].vec[2];
-		u = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (0 / vecs[1].vec[2]) + ss[2] * (1 / vecs[2].vec[2])) / zr);
-		v = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (1 / vecs[1].vec[2]) + ss[2] * (1 / vecs[2].vec[2])) / zr);
+		zr = ss[0] / vecs[0].data()[2] + ss[1] / vecs[1].data()[2] + ss[2] / vecs[2].data()[2];
+		u = ((ss[0] * (0 / vecs[2].data()[2]) + ss[1] * (0 / vecs[1].data()[2]) + ss[2] * (1 / vecs[2].data()[2])) / zr);
+		v = ((ss[0] * (0 / vecs[2].data()[2]) + ss[1] * (1 / vecs[1].data()[2]) + ss[2] * (1 / vecs[2].data()[2])) / zr);
 	}
 	else
 	{
-		zr = ss[0] / vecs[2].vec[2] + ss[1] / vecs[3].vec[2] + ss[2] / vecs[0].vec[2];
-		u = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (1 / vecs[3].vec[2]) + ss[2] * (0 / vecs[0].vec[2])) / zr);
-		v = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (0 / vecs[3].vec[2]) + ss[2] * (0 / vecs[0].vec[2])) / zr);
+		zr = ss[0] / vecs[2].data()[2] + ss[1] / vecs[3].data()[2] + ss[2] / vecs[0].data()[2];
+		u = ((ss[0] * (1 / vecs[2].data()[2]) + ss[1] * (1 / vecs[3].data()[2]) + ss[2] * (0 / vecs[0].data()[2])) / zr);
+		v = ((ss[0] * (1 / vecs[2].data()[2]) + ss[1] * (0 / vecs[3].data()[2]) + ss[2] * (0 / vecs[0].data()[2])) / zr);
 	}
 	//float u = ss[0];
 	//float v = ss[2];
 	// 纹理过滤
-	getBilinearFilteredPixelColor(map, u, v, color);
+	getBilinearFilteredPixelColor(__map_data, u, v, color);
 	return do_RGB((diff) * (color[0]) + ((spec) * (0xFF)),
 	              (diff) * (color[1]) + ((spec) * (0xFF)),
 	              (diff) * (color[2]) + ((spec) * (0xFF)));
@@ -324,98 +290,29 @@ float get_light(double ss[], Vector4 vecs[], Vector4& light_spot, Vector4& forwa
 
 // 光栅化
 // 由于直接传整个矩形进来，因此分割成两个三角形做
-float check_point(int x, int y, mPOINT p[], Vector4* vecs, Vector4& light_spot, Vector4& forward, Vector4& view_pos, int id)
+float check_point(int x, int y, mPOINT p[], Eigen::Vector3f* vecs, Eigen::Vector3f& light_spot, Eigen::Vector3f& forward, Eigen::Vector3f& view_pos,
+                  float f0a, float f0b, float f1a, float f1b)
 {
-	// 颜色
-	float color[3];
 	// 重心坐标
-	//int x0 = p[0].x;
-	//int y0 = p[0].y;
-	//float t1 = f(1, 2, x, y, p);
-	//float t2 = f(1, 2, x0, y0, p);
-	//float a = f(1, 2, x, y, p) / f(1, 2, p[0].x, p[0].y, p);
-	double ss[3];
-	ss[0] = f(1, 2, x, y, p) / f(1, 2, p[0].x, p[0].y, p);
-	ss[1] = f(2, 0, x, y, p) / f(2, 0, p[1].x, p[1].y, p);
+
+	float ss[3];
+
+	ss[0] = f0a;
+	ss[1] = f0b;
 	ss[2] = 1 - ss[0] - ss[1];
-	// 点的坐标
-	Vector4 point;
-	// 光照
-	Vector4 light;
-	// 漫反射
-	Vector4 reflect;
-	Vector4 view_dir;
-	float diff;
-	float spec;
-	float zr;
-	float u;
-	float v;
-	//float c = 1 - a - b;
 	// 判断是否在内部
 	if (fast_judge(ss) && fast_judge(&ss[1]) && fast_judge(&ss[2]))
 	{
 		return get_light(ss, vecs, light_spot, forward, view_pos, 0);
-		//// 点的坐标
-		//point = ss[0] * vecs[0] + ss[1] * vecs[1] + ss[2] * vecs[2];
-		//// 光照
-		//light = point - light_spot;
-		//// 漫反射
-		//diff = light * forward * light_mod;
-		//diff = max(0, diff);
-		//// 全局光
-		////diff += 0.1;
-		//// 反射
-		//// mod()为取长度倒数
-		//reflect = 2.0 * diff * (forward) - light_mod * light;
-		////if (reflect_mod == 0)
-		//	//reflect_mod = reflect.mod();
-		//// 视角方向
-		//view_dir = point - view_pos;
-		//spec = 0;
-		////if (diff > 0.4)
-		//	spec = my_pow(max(0, reflect*view_dir*view_dir.mod()*reflect.mod()), sp_);
-		////min(spec, 1e10);
-		//// 透视矫正
-		//zr = ss[0] / vecs[0].vec[2] + ss[1] / vecs[1].vec[2] + ss[2]/ vecs[2].vec[2];
-		//u = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (0 / vecs[1].vec[2]) + ss[2]*(1 / vecs[2].vec[2])) / zr);
-		//v = ((ss[0] * (0 / vecs[2].vec[2]) + ss[1] * (1 / vecs[1].vec[2]) + ss[2]*(1 / vecs[2].vec[2])) / zr);
-		////float u = ss[0];
-		////float v = ss[2];
-		//// 纹理过滤
-		//getBilinearFilteredPixelColor(map, u, v,color);
-		//return do_RGB((diff)* (color[0]) + ((spec)* (0xFF)),
-		//	(diff)* (color[1]) + ((spec)* (0xFF)),
-		//	(diff)* (color[2]) + ((spec)* (0xFF)));
 	}
 	// 对另外一个三角形做同样处理
 	else if (ss[1] < 0)
 	{
-		ss[0] = f(3, 0, x, y, p) / f(3, 0, p[2].x, p[2].y, p);
-		ss[1] = f(0, 2, x, y, p) / f(0, 2, p[3].x, p[3].y, p);
+		ss[0] = f1a;
+		ss[1] = f1b;
 		ss[2] = 1 - ss[0] - ss[1];
 		if (fast_judge(ss) && fast_judge(&ss[1]) && fast_judge(&ss[2]))
 		{
-			//point = ss[0] * vecs[2] + ss[1] * vecs[3] + ss[2]*vecs[0];
-			//light = point - light_spot;
-			//diff = light * forward * light_mod;
-			//diff = max(0, diff);
-			////diff += 0.1;
-			//reflect = 2.0 * diff * (forward) - light_mod * light;
-			////if (reflect_mod == 0)
-			//	//reflect_mod = reflect.mod();
-			//view_dir = point - view_pos;
-			//spec = 0;
-			////if (diff > 0.4)
-			//	spec = my_pow(max(0, reflect*view_dir*view_dir.mod()*reflect.mod()), sp_);
-
-			//zr = ss[0] / vecs[2].vec[2] + ss[1] / vecs[3].vec[2] + ss[2]/ vecs[0].vec[2];
-			//u = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (1 / vecs[3].vec[2]) + ss[2]*(0 / vecs[0].vec[2])) / zr);
-			//v = ((ss[0] * (1 / vecs[2].vec[2]) + ss[1] * (0 / vecs[3].vec[2]) + ss[2]*(0 / vecs[0].vec[2])) / zr);
-
-			//getBilinearFilteredPixelColor(map, u, v, color);
-			//return do_RGB((diff)* (color[0]) + ((spec)* (0xFF)),
-			//	(diff)* (color[1]) + ((spec)* (0xFF)),
-			//	(diff)* (color[2]) + ((spec)* (0xFF)));
 			return get_light(ss, vecs, light_spot, forward, view_pos, 1);
 		}
 	}
@@ -425,7 +322,6 @@ float check_point(int x, int y, mPOINT p[], Vector4* vecs, Vector4& light_spot, 
 
 void init(HWND hWnd, HINSTANCE hInstance)
 {
-	map = readBMP(map_name);
 	hDC = GetDC(hWnd);
 	Memhdc = CreateCompatibleDC(hDC);
 	Membitmap = CreateCompatibleBitmap(hDC, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -452,28 +348,22 @@ void init(HWND hWnd, HINSTANCE hInstance)
 	QueryPerformanceCounter(&t0);
 
 	// 初始化立方体
-	//reacs[0].transform.forward = Vector4(0, 0, -1, 0);
-	//reacs[0].transform.up = Vector4(0, 1, 0, 0);
-	//reacs[0].transform.right = Vector4(-1, 0, 0, 0);
-	Vector4 points[8];
-	points[0] = Vector4(-SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
-	points[1] = Vector4(SIZE / 2, -SIZE / 2, -SIZE / 2, 1);
-	points[2] = Vector4(SIZE / 2, SIZE / 2, -SIZE / 2, 1);
-	points[3] = Vector4(-SIZE / 2, SIZE / 2, -SIZE / 2, 1);
-	points[4] = Vector4(-SIZE / 2, -SIZE / 2, SIZE / 2, 1);
-	points[5] = Vector4(SIZE / 2, -SIZE / 2, SIZE / 2, 1);
-	points[6] = Vector4(SIZE / 2, SIZE / 2, SIZE / 2, 1);
-	points[7] = Vector4(-SIZE / 2, SIZE / 2, SIZE / 2, 1);
-	//reacs[1].transform.forward = Vector4(0, 1, 0, 0);
-	//reacs[1].transform.up = Vector4(0, 0, 1, 0);
-	//reacs[1].transform.right = Vector4(-1, 0, 0, 0);
+	Eigen::Vector3f points[8];
+	points[0] = Eigen::Vector3f(-SIZE / 2, -SIZE / 2, -SIZE / 2);
+	points[1] = Eigen::Vector3f(SIZE / 2, -SIZE / 2, -SIZE / 2);
+	points[2] = Eigen::Vector3f(SIZE / 2, SIZE / 2, -SIZE / 2);
+	points[3] = Eigen::Vector3f(-SIZE / 2, SIZE / 2, -SIZE / 2);
+	points[4] = Eigen::Vector3f(-SIZE / 2, -SIZE / 2, SIZE / 2);
+	points[5] = Eigen::Vector3f(SIZE / 2, -SIZE / 2, SIZE / 2);
+	points[6] = Eigen::Vector3f(SIZE / 2, SIZE / 2, SIZE / 2);
+	points[7] = Eigen::Vector3f(-SIZE / 2, SIZE / 2, SIZE / 2);
 	int table[6][4] = {
-		{ 0, 3, 2, 1 }, 
-		{ 1, 2, 6, 5 }, 
-		{ 5, 6, 7, 4 }, 
-		{ 4, 7, 3, 0 }, 
-		{ 2, 3, 7, 6 }, 
-		{ 0, 1, 5, 4 }
+		{0, 3, 2, 1},
+		{1, 2, 6, 5},
+		{5, 6, 7, 4},
+		{4, 7, 3, 0},
+		{2, 3, 7, 6},
+		{0, 1, 5, 4}
 	};
 	for (size_t i = 0; i < 6; i++)
 	{
@@ -482,10 +372,10 @@ void init(HWND hWnd, HINSTANCE hInstance)
 			reacs[i].vertexs_world[j] = points[table[i][j]];
 		}
 	}
-	camera.forward = Vector4(0, 0, -1, 0);
-	camera.up = Vector4(0, 1, 0, 0);
-	camera.right = Vector4(-1, 0, 0, 0);
-	camera.position = Vector4(0, 0, 50, 1);
+	camera.forward = Eigen::Vector3f(0, 0, -1);
+	camera.up = Eigen::Vector3f(0, 1, 0);
+	camera.right = Eigen::Vector3f(-1, 0, 0);
+	camera.position = Eigen::Vector3f(0, 0, 50);
 }
 
 void rotate_x(float* vec, float c, float s)
@@ -515,91 +405,33 @@ void rotate_z(float* vec, float c, float s)
 	memcpy(vec, new_vec, 3 * sizeof(float));
 }
 
+
 void GameLoop(HWND hwnd)
 {
-	static mPOINT Pt[4 * 6];
+	//static mPOINT Pt[4 * 6];
 	static Zbuffer buffers[6];
 	static int count = 0;
 
 	// 开始计时
 	QueryPerformanceCounter(&t1);
 
-	// 摄像头
-	//camera.position = Vector4( -30- a_x, -4 + a_y, 50 - a_z, 1);
-
-
-	Transform cube;
-	//cube.position = Vector4(0, 0, 0, 1);
-	//cube.forward = Vector4(cx*sy*cz - sx*sz, -cx*sy*sz - sx*cz, -cx*cy, 0);
-	//cube.up = Vector4(sx*sy*cz + cx*sz, -sx*sy*sz + cx*cz, -sx*cy, 0);
-	//cube.right = Vector4(-cy*cz, sz*cy, -sy, 0);
-	//camera.forward = Vector4(cx*sy*cz - sx*sz, -cx*sy*sz - sx*cz, -cx*cy, 0).normal();
-	//camera.up = Vector4(sx*sy*cz + cx*sz, -sx*sy*sz + cx*cz, -sx*cy, 0).normal();
-	//camera.right = Vector4(-cy*cz, sz*cy, -sy, 0).normal();
-
-	//camera.forward = Vector4(0, 0, -1, 0);
-	//camera.up = Vector4(0, 1, 0, 0);
-	//camera.right = Vector4(-1, 0, 0, 0);
-
-	//if (a_x > 0)
-	{
-		//rotate_x(camera.forward.vec, cx, sx);
-		//rotate_x(camera.up.vec, cx, sx);
-		//rotate_x(camera.right.vec, cx, sx);
-
-		//rotate_y(camera.right.vec, cy, sy);
-		//rotate_y(camera.forward.vec, cy, sy);
-		//rotate_y(camera.up.vec, cy, sy);
-
-		//rotate_z(camera.forward.vec, cz, sz);
-		//rotate_z(camera.up.vec, cz, sz);
-		//rotate_z(camera.right.vec, cz, sz);
-		//a_x-- ;
-	}
-
-
-	Vector4 light(0, 10, -40, 0);
+	Eigen::Vector3f light(0, 0, -40);
 	// 光照跟随摄像头
 	// 取消下面注释，光线在世界坐标
 	//transform_2(light.vec, light.vec, camera); 
 
 	// 对每个面
-#pragma omp parallel for
-
+	//#pragma omp parallel for
 	for (int i = 0; i < 6; i++)
 	{
-		// 世界坐标
-		//WT(reacs[i]);
 		// 视角坐标
 		VT(reacs[i], camera);
-		//几个点顺序反了
-		//if (i != 0 && i != 5)
-		//{
-		//	Vector4 tmp = reacs[i].vertexs_view[1];
-		//	reacs[i].vertexs_view[1] = reacs[i].vertexs_view[3];
-		//	reacs[i].vertexs_view[3] = tmp;
-
-		//	tmp = reacs[i].vertexs_world[1];
-		//	reacs[i].vertexs_world[1] = reacs[i].vertexs_world[3];
-		//	reacs[i].vertexs_world[3] = tmp;
-		//}
 		// 顶点投影
 		get_Pt(reacs[i]);
-		// 两个面法向反了
-		//if (i == 0 || i == 5)
-		//	reacs[i].transform.forward = -reacs[i].transform.forward;
-		// 视角方向
-		//Vector4 view = reacs[i].get_center();
-		// ???
-		//float* view_vec = view.vec;
-		//view_vec[0] /= tan(3.14 / 6);
-		//view_vec[1] /= tan(3.14 / 6);
-		//view_vec[2] *= 0.9;
-		//float r = reacs[i].transform.forward * view;
 		buffers[i].i = i;
-		if (reacs[i].transform.forward.vec[2] > 0)
+		if (reacs[i].transform.forward.data()[2] > 0)
 		{
-			buffers[i].z = reacs[i].get_z();
+			buffers[i].z = 1;
 		}
 		else
 		{
@@ -611,27 +443,18 @@ void GameLoop(HWND hwnd)
 	// zsort 对矩形根据深度排序
 	vector<Zbuffer> bsort(6);
 	bsort.assign(buffers, buffers + 6);
-
-	//sort(bsort.begin(), bsort.end(), [](const Zbuffer& x, const Zbuffer& y)
-	//     {
-	//	     return x.z > y.z;
-	//     });
-	light_mod = light.mod();
 	for (Zbuffer z : bsort)
 	{
 		if (z.z < 0)
 			continue;
-		//if (z.i != 1)
-		//	continue;
 		mPOINT p[4];
 		for (size_t i = 0; i < 4; i++)
 		{
-			p[i].x = (reacs[z.i].vertexs_sc[i].vec[0] + 1) / 2 * WINDOW_WIDTH;
-			p[i].y = (reacs[z.i].vertexs_sc[i].vec[1] + 1) / 2 * WINDOW_HEIGHT;
+			p[i].x = (reacs[z.i].vertexs_sc[i].data()[0] + 1) / 2 * WINDOW_WIDTH;
+			p[i].y = (reacs[z.i].vertexs_sc[i].data()[1] + 1) / 2 * WINDOW_HEIGHT;
 		}
 		int minx, miny, maxx, maxy;
 		float minx_p = WINDOW_WIDTH, miny_p = WINDOW_HEIGHT, maxx_p = 0, maxy_p = 0;
-		bool t0 = true;
 		// 计算包裹了投影四边形的矩形
 
 		for (int i = 0; i < 4; ++i)
@@ -641,71 +464,90 @@ void GameLoop(HWND hwnd)
 			if (miny_p > pp->y) miny_p = pp->y;
 			if (maxx_p < pp->x) maxx_p = pp->x;
 			if (maxy_p < pp->y) maxy_p = pp->y;
-			if (pp->x > 0 && pp->x < WINDOW_WIDTH && pp->y > 0 && pp->y < WINDOW_HEIGHT) t0 = false;
 		}
-		float midx = (minx_p + maxx_p) / 2;
-		float midy = (miny_p + maxy_p) / 2;
 		maxx = min(WINDOW_WIDTH-1, maxx_p+2);
 		maxy = min(WINDOW_HEIGHT-1, maxy_p+2);
 		minx = max(0, minx_p-2);
 		miny = max(0, miny_p-2);
 		// 扫描
-		int i, j;
-		//reflect_mod = 0;
-		int has_printed[WINDOW_HEIGHT];
+		int i;
+		char has_printed[WINDOW_HEIGHT];
 		char skip[WINDOW_HEIGHT];
-		memset(has_printed, 0, WINDOW_HEIGHT * sizeof(int));
+		memset(has_printed, 0, WINDOW_HEIGHT * sizeof(char));
 		memset(skip, 0, WINDOW_HEIGHT * sizeof(char));
-#pragma omp parallel for private(j)
+		float f12 = f(1, 2, p[0].x, p[0].y, p);
+		float f20 = f(2, 0, p[1].x, p[1].y, p);
+		float f30 = f(3, 0, p[2].x, p[2].y, p);
+		float f02 = f(0, 2, p[3].x, p[3].y, p);
+#pragma omp parallel for schedule(dynamic,4)
+//#pragma omp parallel for
+
 		for (i = miny; i < maxy; i++)
 		{
-			if (reacs[z.i].transform.forward.vec[0] > 0)
+			int f12_a = f(1, 2, minx, i, p);
+			int f20_b = f(2, 0, minx, i, p);
+			int f30_a = f(3, 0, minx, i, p);
+			int f02_b = f(0, 2, minx, i, p);
+
+			float f0a = 1.0 * f12_a / f12;
+			float f0b = 1.0 * f20_b / f20;
+			float f1a = 1.0 * f30_a / f30;
+			float f1b = 1.0 * f02_b / f02;
+			int j;
+			//if (reacs[z.i].transform.forward.data()[0] > 0.0001)
 			{
 				for (j = minx; j < maxx; j++)
 				{
 					if (*(buffer + i * WINDOW_WIDTH + j) > 0x0)
+					{
+						if (has_printed[i])
+							skip[i] = -1;
 						continue;
-					if (skip[i] > 0)
+					}
+					//if (skip[i] > 0)
+					//{
+					//	skip[i]--;
+					//	continue;
+					//}
+					if (skip[i] < 0)
 					{
 						continue;
 					}
-					// 如果已经画了点就不扫描了
-					int color = check_point(j, i, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward, camera.forward, z.i);
+
+					float f0a_ = f0a + (p[1].y - p[2].y) * (j - minx) * 1.0 / f12;
+					float f0b_ = f0b + (p[2].y - p[0].y) * (j - minx) * 1.0 / f20;
+					float f1a_ = f1a + (p[3].y - p[0].y) * (j - minx) * 1.0 / f30;
+					float f1b_ = f1b + (p[0].y - p[2].y) * (j - minx) * 1.0 / f02;
+					int color = check_point(j, i, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward, camera.forward,
+					                        f0a_,
+					                        f0b_,
+					                        f1a_,
+					                        f1b_
+					);
 					if (color >= 0)
 					{
-						*(buffer + i * WINDOW_WIDTH + j) = color;
-						has_printed[i] ++;;
-					}
-					else
-					{
-						if (has_printed[i] > 0)
-						{
-							skip[i] = 1;
-						}
-					}
-				}
-			}
-			else
-			{
-				for (j = maxx; j > minx; j--)
-				{
-					if (*(buffer + i * WINDOW_WIDTH + j) > 0x0)
-						continue;
-					if (skip[i] > 0)
-					{
-						continue;
-					}
-					// 如果已经画了点就不扫描了
-					int color = check_point(j, i, p, reacs[z.i].vertexs_view, light, reacs[z.i].transform.forward, camera.forward, z.i);
-					if (color >= 0)
-					{
-						*(buffer + i * WINDOW_WIDTH + j) = color;
+						*(buffer + i * WINDOW_WIDTH + j) |= color;
 						has_printed[i] = 1;;
 					}
 					else
 					{
+						//*(buffer + i * WINDOW_WIDTH + j) = 0xFF;
 						if (has_printed[i] > 0)
-							skip[i] = 1;
+							skip[i] = -1;
+						//else
+						//{
+						//	float f0a_2 = f0a_ + (p[1].y - p[2].y) * 16 * 1.0 / f12;
+						//	float f0b_2 = f0b_ + (p[2].y - p[0].y) * 16 * 1.0 / f20;
+						//	float f1a_2 = f1a_ + (p[3].y - p[0].y) * 16 * 1.0 / f30;
+						//	float f1b_2 = f1b_ + (p[0].y - p[2].y) * 16 * 1.0 / f02;
+						//	if (!(
+						//		f0a_2 > -1e-4 && (1-f0a_2-f0b_2) > -1e-4 && f0b_2>-1e-4
+						//		||
+						//		f1a_2 > -1e-4 && (1 - f1a_2 - f1b_2)> -1e-4 && f1b_2>-1e-4
+						//		)){
+						//		skip[i] = 16;
+						//	}
+						//}
 					}
 				}
 			}
@@ -717,52 +559,51 @@ void GameLoop(HWND hwnd)
 	static char tmp[100] = "FPS:\0";
 	QueryPerformanceCounter(&t2);
 
-	int frames = tf.QuadPart / (t2.QuadPart - t1.QuadPart);
-	if (count == 10)
+	double frames = tf.QuadPart / (t2.QuadPart - t1.QuadPart);
+	static double now_time = 0;
+	now_time += 1.0 * (t2.QuadPart - t1.QuadPart) / tf.QuadPart;
+	if (now_time >= 1.0)
 	{
 		QueryPerformanceFrequency(&tf);
-
-		sprintf(tmp, "FPS: %d\0", frames);
+		now_time = 0;
+		sprintf(tmp, "FPS: %d\0", count);
 		count = 0;
 	}
-	// 根据当前帧数判断旋转幅度
-	//frames = 60;
-	camera.position = Vector4(0, 0, 50, 1);
 
+	frames *= 0.4;
+	frames += 40;
+
+	// 旋转方块
+	// 根据当前帧数判断旋转幅度
+	camera.forward = Eigen::Vector3f(0, 0, -1);
+	camera.up = Eigen::Vector3f(0, 1, 0);
+	camera.right = Eigen::Vector3f(-1, 0, 0);
+	camera.position = Eigen::Vector3f(0, 0, 50);
 	static float r_x = 0, r_y = 0;
 
-	r_x += 1.0*a_x * 360 / frames;
-	r_y += 1.0*a_y * 360 / frames;
+	r_x += 1.0 * a_x * 360 / frames;
+	r_y += 1.0 * a_y * 360 / frames;
 	r_x = min(90, r_x);
 	r_x = max(-90, r_x);
-	//float cx = cos(3.14 * (60.0 / frames) * a_x / 20);
-	//float sx = sin(3.14 * (60.0 / frames) * a_x / 20);
-	//float cy = cos(3.14 * (60.0 / frames) * a_y / 20);
-	//float sy = sin(3.14 * (60.0 / frames) * a_y / 20);
-	//float cz = cos(3.14 * (60.0 / frames) * a_z / 20);
-	//float sz = sin(3.14 * (60.0 / frames) * a_z / 20);
 	float cx = cos(r_x / 180 * 3.14);
 	float sx = sin(r_x / 180 * 3.14);
 	float cy = cos(r_y / 180 * 3.14);
 	float sy = sin(r_y / 180 * 3.14);
 	float cz = cos(3.14 * (60.0 / frames) * a_z / 20);
 	float sz = sin(3.14 * (60.0 / frames) * a_z / 20);
-	//rotate_x(camera.forward.vec, cx, sx);
-	//rotate_x(camera.up.vec, cx, sx);
-	//rotate_x(camera.right.vec, cx, sx);
+	rotate_x(camera.forward.data(), cx, sx);
+	rotate_x(camera.up.data(), cx, sx);
+	rotate_x(camera.right.data(), cx, sx);
 
-	//rotate_y(camera.right.vec, cy, sy);
-	//rotate_y(camera.forward.vec, cy, sy);
-	//rotate_y(camera.up.vec, cy, sy);
+	rotate_y(camera.right.data(), cy, sy);
+	rotate_y(camera.forward.data(), cy, sy);
+	rotate_y(camera.up.data(), cy, sy);
 
-	//rotate_z(camera.forward.vec, cz, sz);
-	//rotate_z(camera.up.vec, cz, sz);
-	//rotate_z(camera.right.vec, cz, sz);
-	//if (a_x != 0)
-	rotate_x(camera.position.vec, cx, sx);
-	//if (a_y != 0)
-	rotate_y(camera.position.vec, cy, sy);
-	//rotate_z(camera.position.vec, cz, sz);
+	rotate_z(camera.forward.data(), cz, sz);
+	rotate_z(camera.up.data(), cz, sz);
+	rotate_z(camera.right.data(), cz, sz);
+	rotate_x(camera.position.data(), cx, sx);
+	rotate_y(camera.position.data(), cy, sy);
 	static float distance = 1;
 	distance += a_dep / 60.0;
 	camera.position = distance * camera.position;
@@ -770,9 +611,9 @@ void GameLoop(HWND hwnd)
 	a_x = 0;
 	a_y = 0;
 	a_z = 0;
-	camera.forward = -camera.position.normal();
-	camera.right = -(camera.forward / Vector4(0, 1, 0, 0)).normal();
-	camera.up = (camera.forward / camera.right);
+	//camera.forward = -camera.position.normal();
+	//camera.right = -(camera.forward / Vector4(0, 1, 0, 0)).normal();
+	//camera.up = (camera.forward / camera.right);
 
 	//QueryPerformanceCounter(&t0);
 	char _x[50] = "X:";
@@ -832,8 +673,6 @@ LRESULT CALLBACK WindProcedure(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam
 			a_z--;
 			break;
 		}
-		// 重新计算
-		//light_mod = 0;
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(WM_QUIT);
@@ -848,7 +687,9 @@ INT WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
 	WNDCLASSEX WndCls;
-	omp_set_num_threads(thread_count);
+	//omp_set_num_threads(thread_count_b);
+	Eigen::initParallel();
+	__map_data = readBMP(map_name_str);
 
 	WndCls.cbSize = sizeof(WndCls);
 	WndCls.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;

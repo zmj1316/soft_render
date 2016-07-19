@@ -12,8 +12,8 @@ public:
 	Transform(Vector4& position);
 	~Transform();
 
-    Vector4 position;
-    Vector4 forward, up, right;
+	Eigen::Vector3f position;
+	Eigen::Vector3f forward, up, right;
 
     
 };
